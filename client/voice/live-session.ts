@@ -162,6 +162,10 @@ export class LiveVoiceSession extends EventTarget {
   }
 
   private emitCompletedTurn(turn: VoiceTurn): void {
+    // Project the final complete=true snapshot before consumers handle either
+    // the delegation or turn completion. React state may still be batching, so
+    // the delegation also carries this causal snapshot as a fallback.
+    this.emitTurn(turn);
     const pending = this.pendingDelegations.get(turn.id) ?? [];
     this.pendingDelegations.delete(turn.id);
     for (const delegation of pending) this.emitDelegation({ ...delegation, causalTurn: turn });

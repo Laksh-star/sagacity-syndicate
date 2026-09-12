@@ -10,6 +10,7 @@ import { AgentCard } from "./components/AgentCard";
 import { DecisionScroll } from "./components/DecisionScroll";
 import { VoiceControl } from "./components/VoiceControl";
 import { VoiceCouncilLifecycle, type CouncilRevision } from "./voice/council-lifecycle";
+import { buildVoiceDecisionContext } from "./voice/decision-context";
 import { LiveVoiceSession, type LiveDelegation, type VoiceTurn } from "./voice/live-session";
 import "./styles.css";
 
@@ -17,11 +18,6 @@ const names: AgentName[] = ["forethought", "quickaction", "examiner"];
 const freshAgents = (): Record<AgentName, AgentCardState> => ({ forethought: "waiting", quickaction: "waiting", examiner: "waiting" });
 const activePhases: CouncilPhase[] = ["routing", "independent", "cross_examining", "synthesizing"];
 type ProductMode = "conversation" | "deliberating" | "completed" | "reconvening";
-
-function transcriptContext(turns: VoiceTurn[]): string {
-  return turns.filter((turn) => turn.complete && turn.text.trim()).slice(-12)
-    .map((turn) => `${turn.role === "user" ? "User" : "Sutradhara"}: ${turn.text.trim()}`).join("\n");
-}
 
 export default function App() {
   const [context, setContext] = useState("");
@@ -75,8 +71,11 @@ export default function App() {
   };
 
   const runCouncil = async (options: { changedConstraint?: string; delegation?: LiveDelegation; reconvening?: boolean; conversationChanged?: boolean } = {}) => {
-    const voiceContext = transcriptContext(transcriptRef.current);
-    const decisionContext = [contextRef.current.trim(), voiceContext && `Voice conversation:\n${voiceContext}`].filter(Boolean).join("\n\n");
+    const decisionContext = buildVoiceDecisionContext(
+      contextRef.current,
+      transcriptRef.current,
+      options.delegation?.causalTurn,
+    );
     if (!decisionContext) { setError("Describe the decision before convening the council."); return; }
 
     setError(undefined);
