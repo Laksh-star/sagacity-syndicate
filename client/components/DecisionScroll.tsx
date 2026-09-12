@@ -1,10 +1,10 @@
 import type { DecisionScroll as DecisionScrollType } from "../../shared/schemas";
 
-export function DecisionScroll({ scroll, mode }: { scroll?: DecisionScrollType; mode: "conversation" | "deliberating" | "completed" | "reconvening" }) {
+export function DecisionScroll({ scroll, mode, emptyCopy }: { scroll?: DecisionScrollType; mode: "conversation" | "deliberating" | "completed" | "reconvening"; emptyCopy?: { title: string; description: string } }) {
   if (!scroll) return <section className="scroll scroll--empty">
     <span className="eyebrow">Decision scroll</span>
-    <h2>{mode === "deliberating" ? "A verified decision will appear here." : "Ready when you are."}</h2>
-    <p>{mode === "deliberating" ? "The agent cards show the live council phase." : "Give Sutradhara the decision, hard constraints, and time horizon."}</p>
+    <h2>{mode === "deliberating" ? "A verified decision will appear here." : emptyCopy?.title ?? "Ready when you are."}</h2>
+    <p>{mode === "deliberating" ? "The agent cards show the live council phase." : emptyCopy?.description ?? "Give Sutradhara the decision, hard constraints, and time horizon."}</p>
   </section>;
   const entries = [
     ["Rationale", scroll.rationale],

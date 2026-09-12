@@ -47,13 +47,18 @@ A useful decision prompt looks like this:
 ## Voice use
 
 1. Use a normal browser with microphone permission enabled for the local site.
-2. Select **Start voice**.
+2. Keep **Speak with Sutradhara** selected and choose **Start voice**.
 3. Hold the voice control while speaking, then release when finished.
 4. Answer only the clarification Sutradhara asks.
-5. When Sutradhara delegates, the UI changes to **The council is deliberating**.
-6. Wait for the full Decision Scroll to appear. Sutradhara will give a short executive briefing rather than reading the Scroll aloud.
+5. The app automatically hands a ready decision to the council. You do not need to type in Decision Context or select Convene in voice mode.
+6. When the application actually starts the council, the UI changes to **The council is deliberating**. Sutradhara saying that it intends to delegate is not the status signal; the UI is authoritative.
+7. Wait for the full Decision Scroll to appear. Sutradhara will give a short executive briefing rather than reading the Scroll aloud.
 
-The transcript displays complete conversational turns, not every streaming fragment. A partially recognized current turn appears as one in-progress row.
+The written details control in voice mode is optional and is intended for exact figures or spellings that are easier to type. The transcript displays complete conversational turns, not every streaming fragment. It is taller and scrollable, follows new turns while you are at the bottom, and shows **Jump to latest** if you scroll upward.
+
+If the app is briefly showing **Preparing the council**, it is giving native GPT-Live delegation a short preference window. If no native delegation arrives, the application starts the council itself. **Send to council now** is an optional immediate override, not a required step.
+
+To use the original text workflow, select **Type decision**, enter the Decision Context, and select **Convene the council**. Voice is not required in that mode.
 
 ## While the council is deliberating
 
@@ -122,6 +127,8 @@ The UI reports a microphone-permission timeout instead of waiting forever.
 - Inspect `logs/deliberations.jsonl` for council phases and bounded results.
 - Inspect `logs/live-events.jsonl` for voice turn, delegation, append, cancellation, or stale-result events.
 - Restart `npm run dev` after changing environment variables.
+
+For the handoff path, `logs/live-events.jsonl` should show `live.readiness.assessed`, then either `live.delegation.created` or `live.delegation.fallback`, followed by `council.started`. If the UI says the council is deliberating, that state came from a real application event rather than from Sutradhara's speech.
 
 An append acknowledgement confirms GPT-Live accepted context; it does not prove that audio was audible.
 

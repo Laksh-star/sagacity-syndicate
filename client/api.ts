@@ -1,11 +1,14 @@
 import {
   CouncilEventSchema,
   VoiceInterruptionAssessmentSchema,
+  VoiceReadinessAssessmentSchema,
   type CouncilEvent,
   type DeliberationRequest,
   type LiveDiagnosticEvent,
   type VoiceInterruptionAssessment,
   type VoiceInterruptionRequest,
+  type VoiceReadinessAssessment,
+  type VoiceReadinessRequest,
 } from "../shared/schemas";
 
 export async function streamDeliberation(
@@ -53,6 +56,16 @@ export async function assessVoiceInterruption(request: VoiceInterruptionRequest)
   });
   if (!response.ok) throw new Error(`Voice interruption assessment failed (${response.status}).`);
   return VoiceInterruptionAssessmentSchema.parse(await response.json());
+}
+
+export async function assessVoiceReadiness(request: VoiceReadinessRequest): Promise<VoiceReadinessAssessment> {
+  const response = await fetch("/api/voice/readiness-assessment", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  if (!response.ok) throw new Error(`Voice readiness assessment failed (${response.status}).`);
+  return VoiceReadinessAssessmentSchema.parse(await response.json());
 }
 
 export function recordLiveDiagnostic(event: LiveDiagnosticEvent): void {

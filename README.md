@@ -49,15 +49,16 @@ Keep `.env` local. It is ignored by git and the API key is never sent to the bro
 
 1. Configure a live API key and set `MOCK_COUNCIL=false`.
 2. Select **Start voice** and allow microphone access.
-3. Hold the voice control while speaking, then release.
-4. Sutradhara asks only necessary clarifying questions and delegates when the context is sufficient.
-5. The full Decision Scroll appears in the UI; Sutradhara gives a short executive briefing rather than reading it aloud.
-6. Ask “Why?”, ask for a specialist's view, or ask what would change the decision. These use the verified result without rerunning the council.
-7. State a genuinely changed fact to reconvene. The previous verified Scroll remains visible until its replacement is complete.
+3. Leave **Speak with Sutradhara** selected. The written Decision Context is optional in voice mode.
+4. Hold the voice control while speaking, then release. The application assesses the completed turn and automatically starts the council when the decision is ready.
+5. Native `session.delegation.created` is preferred. If GPT-Live does not emit it after a short grace period, an idempotent application fallback starts the same council path; no manual Convene click is required.
+6. The full Decision Scroll appears in the UI; Sutradhara gives a short executive briefing rather than reading it aloud.
+7. Ask “Why?”, ask for a specialist's view, or ask what would change the decision. These use the verified result without rerunning the council.
+8. State a genuinely changed fact to reconvene. The previous verified Scroll remains visible until its replacement is complete.
 
 Voice uses browser WebRTC. The server creates the `gpt-live-1` session with client delegation. The browser aggregates transcript fragments into `VoiceTurn` records. Because the current Live protocol does not expose a completed-input-transcript event, releasing push-to-talk initiates finalization; the acknowledged `session.input_audio.muted` boundary plus a short transcript-settle window closes the user turn. A late delta within that utterance updates the same turn instead of creating an interruption.
 
-The delegation's `offset_ms` binds it to the user turn that caused it. That causal turn can never cancel its own council round. Only a later completed turn enters interruption materiality routing:
+The delegation's `offset_ms` binds it to the user turn that caused it. That causal turn can never cancel its own council round. GPT-Live speech never changes application state: only native delegation, the readiness fallback, council events, and verified synthesis do. Only a later completed turn enters interruption materiality routing:
 
 - acknowledgements, status questions, and questions about the completed decision preserve the round;
 - confident changed constraints cancel/stale the active round and reconvene;
@@ -69,13 +70,16 @@ Spoken delivery and the durable artifact are deliberately different:
 - **Voice Brief** is a deterministic, schema-bounded set of facts for roughly 20–40 seconds of natural paraphrase.
 - `session.thinking.append` receives compact verified council context for later questions.
 - `session.commentary.append` receives only the brief or concise process guidance intended to be spoken.
+- All three Live append channels support the documented `delegation_id: null` session-context path, so fallback or text-started work can still report completion to an active voice session.
+
+The transcript is a bounded, scrollable turn history. It follows new turns while the reader is at the bottom, preserves the reader's position after they scroll upward, and offers **Jump to latest**.
 
 ## Architecture
 
 ```text
 Browser
   ├─ text UI ───────────────┐
-  └─ GPT-Live WebRTC        │ fragments → completed turns → delegation
+  └─ GPT-Live WebRTC        │ fragments → completed turns → readiness → native delegation or fallback
                             ▼
 Express server ── Council state machine
                     ├─ Voice materiality gate
@@ -128,7 +132,7 @@ The Agents API receives JSON Schema output constraints and the server validates 
 
 Each orchestration transition and bounded agent result is appended to `logs/deliberations.jsonl`. The client/server Live lifecycle writes bounded event metadata to `logs/live-events.jsonl`, including turn boundaries, delegation binding, revisions, phases, append acknowledgements, cancellation, and stale-result suppression. It does not log API keys, audio, raw deltas, or chain-of-thought. These files are ignored by git and may still contain bounded decision facts; delete or redact them before sharing an archive.
 
-For a voice debugging pass, run `npm run dev`, reproduce the issue, then inspect the two JSONL files. A `session.thinking.appended` or `session.commentary.appended` event confirms the server accepted an append; it does not prove the audio was spoken. Browser microphone, WebRTC, account entitlement, and audible playback still require a real-account smoke test.
+For a voice debugging pass, run `npm run dev`, reproduce the issue, then inspect the two JSONL files. Look for `live.readiness.assessed`, followed by either `live.delegation.created` or `live.delegation.fallback`, then `council.started`. Completion should be followed by thinking, instructions, and commentary send/ack events. An append acknowledgement confirms GPT-Live accepted context; it does not prove the audio was spoken. Browser microphone, WebRTC, account entitlement, and audible playback still require a real-account smoke test.
 
 ## Commands
 

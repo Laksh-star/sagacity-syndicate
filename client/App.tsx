@@ -5,19 +5,32 @@ import type {
 } from "../shared/schemas";
 import { createCouncilThinkingContext, createVoiceBrief, createVoiceCommentary } from "../shared/voice";
 import { classifyLocalVoiceIntent, interruptionAction, obviousNonMaterialAssessment } from "../shared/voice-policy";
-import { assessVoiceInterruption, interruptDeliberation, recordLiveDiagnostic, streamDeliberation } from "./api";
+import { assessVoiceInterruption, assessVoiceReadiness, interruptDeliberation, recordLiveDiagnostic, streamDeliberation } from "./api";
 import { AgentCard } from "./components/AgentCard";
 import { DecisionScroll } from "./components/DecisionScroll";
 import { VoiceControl } from "./components/VoiceControl";
 import { VoiceCouncilLifecycle, type CouncilRevision } from "./voice/council-lifecycle";
+import { LiveAppendTracker, type LiveAppendKind } from "./voice/append-tracker";
+import { VoiceDelegationCoordinator } from "./voice/delegation-coordinator";
 import { buildVoiceDecisionContext } from "./voice/decision-context";
 import { LiveVoiceSession, type LiveDelegation, type VoiceTurn } from "./voice/live-session";
+import { isNearTranscriptEnd, scrollTranscriptToLatest } from "./voice/transcript-scroll";
 import "./styles.css";
 
 const names: AgentName[] = ["forethought", "quickaction", "examiner"];
 const freshAgents = (): Record<AgentName, AgentCardState> => ({ forethought: "waiting", quickaction: "waiting", examiner: "waiting" });
 const activePhases: CouncilPhase[] = ["routing", "independent", "cross_examining", "synthesizing"];
 type ProductMode = "conversation" | "deliberating" | "completed" | "reconvening";
+type InputMode = "voice" | "text";
+type VoiceIntakeStage = "ready" | "listening" | "captured" | "clarifying" | "preparing";
+
+const emptyCopy: Record<VoiceIntakeStage, { title: string; description: string }> = {
+  ready: { title: "Ready when you are.", description: "Speak with Sutradhara, or switch to text to write the decision." },
+  listening: { title: "Listening to your decision.", description: "Release the voice control when you finish this turn." },
+  captured: { title: "Decision captured.", description: "Sutradhara is checking whether one essential detail is still needed." },
+  clarifying: { title: "One detail may still be needed.", description: "Answer Sutradhara's brief clarification, then the council will begin automatically." },
+  preparing: { title: "Preparing the council.", description: "The application is handing the completed decision to the council." },
+};
 
 export default function App() {
   const [context, setContext] = useState("");
@@ -31,7 +44,10 @@ export default function App() {
   const [changedFact, setChangedFact] = useState<string>();
   const [error, setError] = useState<string>();
   const [voiceStatus, setVoiceStatus] = useState<"offline" | "connecting" | "ready" | "talking">("offline");
+  const [inputMode, setInputMode] = useState<InputMode>("voice");
+  const [voiceIntakeStage, setVoiceIntakeStage] = useState<VoiceIntakeStage>("ready");
   const [transcript, setTranscript] = useState<VoiceTurn[]>([]);
+  const [transcriptAtLatest, setTranscriptAtLatest] = useState(true);
   const voice = useRef<LiveVoiceSession | undefined>(undefined);
   const lifecycle = useRef(new VoiceCouncilLifecycle());
   const deliberationId = useRef<string | undefined>(undefined);
@@ -41,27 +57,50 @@ export default function App() {
   const contextRef = useRef(context);
   const scrollRef = useRef(scroll);
   const transcriptRef = useRef(transcript);
+  const productModeRef = useRef(productMode);
   const processedTurns = useRef(new Set<string>());
   const revisionedTurns = useRef(new Set<string>());
   const activeDelegation = useRef<string | null>(null);
   const progressSent = useRef(false);
+  const readinessTurns = useRef(new Set<string>());
+  const fallbackTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  const delegationCoordinator = useRef(new VoiceDelegationCoordinator());
+  const appendTracker = useRef(new LiveAppendTracker());
+  const transcriptElement = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => { contextRef.current = context; }, [context]);
   useEffect(() => { scrollRef.current = scroll; }, [scroll]);
   useEffect(() => { transcriptRef.current = transcript; }, [transcript]);
-  useEffect(() => () => voice.current?.close(), []);
+  useEffect(() => { productModeRef.current = productMode; }, [productMode]);
+  useEffect(() => () => {
+    fallbackTimers.current.forEach(clearTimeout);
+    voice.current?.close();
+  }, []);
+
+  useEffect(() => {
+    if (!transcriptAtLatest || !transcriptElement.current) return;
+    scrollTranscriptToLatest(transcriptElement.current);
+  }, [transcript, transcriptAtLatest]);
 
   const diagnostic = (entry: LiveDiagnosticEvent) => recordLiveDiagnostic(entry);
 
-  const speak = (content: string, delegationId: string | null, event: "live.thinking.sent" | "live.commentary.sent", revision?: CouncilRevision) => {
-    if (!voice.current || !delegationId) return;
+  const appendLive = (content: string, delegationId: string | null, kind: LiveAppendKind, revision?: CouncilRevision) => {
+    if (!voice.current) return;
     try {
-      if (event === "live.thinking.sent") voice.current.appendThinking(content, delegationId);
-      else voice.current.appendCommentary(content, delegationId);
-      diagnostic({ event, delegationId: delegationId ?? undefined, ...revision, detail: `characters=${content.length}` });
+      const eventId = kind === "thinking"
+        ? voice.current.appendThinking(content, delegationId)
+        : kind === "commentary"
+          ? voice.current.appendCommentary(content, delegationId)
+          : voice.current.appendInstructions(content, delegationId);
+      appendTracker.current.register(eventId, { kind, revision, delegationId });
+      diagnostic({ event: `live.${kind}.sent` as LiveDiagnosticEvent["event"], delegationId: delegationId ?? undefined, ...revision, detail: `event=${eventId}; characters=${content.length}` });
     } catch (caught) {
       diagnostic({ event: "live.error", detail: caught instanceof Error ? caught.message : "Could not append to GPT-Live." });
     }
+  };
+
+  const setAuthoritativeLiveStatus = (status: "NOT_STARTED" | "CLARIFYING" | "ACTIVE" | "COMPLETED" | "FAILED", detail: string, delegationId: string | null = null, revision?: CouncilRevision) => {
+    appendLive(`Authoritative council status: ${status}. ${detail} Do not claim any other council status until the application sends a newer authoritative status.`, delegationId, "instructions", revision);
   };
 
   const noteConversationTurn = (turnId: string) => {
@@ -90,10 +129,12 @@ export default function App() {
     fetchAbort.current = new AbortController();
     progressSent.current = false;
     setProductMode(options.reconvening ? "reconvening" : "deliberating");
+    setVoiceIntakeStage("preparing");
     setPhase("routing");
     setAgentStates(freshAgents());
     diagnostic({ event: "live.delegation.bound_to_revision", delegationId: delegationId ?? undefined, ...revision, detail: `causalTurn=${options.delegation?.causalTurnId ?? "text"}` });
     diagnostic({ event: "council.started", delegationId: delegationId ?? undefined, ...revision, detail: options.reconvening ? "reconvening" : "initial" });
+    setAuthoritativeLiveStatus("ACTIVE", "The council has actually started. You may acknowledge this briefly. Do not state findings before verified synthesis arrives.", delegationId, revision);
 
     const acceptEvent = (event: CouncilEvent) => {
       if (!lifecycle.current.isCurrent(revision)) {
@@ -104,9 +145,9 @@ export default function App() {
         setPhase(event.phase);
         diagnostic({ event: "council.phase", ...revision, detail: event.phase });
         const boundDelegation = lifecycle.current.activeRound()?.delegationId ?? delegationId;
-        if (event.phase === "cross_examining" && !progressSent.current && boundDelegation) {
+        if (event.phase === "cross_examining" && !progressSent.current) {
           progressSent.current = true;
-          speak("The independent views are complete and the council is now challenging assumptions. Do not suggest any conclusion yet.", boundDelegation, "live.commentary.sent", revision);
+          appendLive("The independent views are complete and the council is now challenging assumptions. Do not suggest any conclusion yet.", boundDelegation, "commentary", revision);
         }
       } else if (event.type === "agent.state") {
         setAgentStates((current) => ({ ...current, [event.agent]: event.state }));
@@ -123,11 +164,13 @@ export default function App() {
         setRoundMode(event.mode);
         setProductMode("completed");
         setPhase("completed");
+        setVoiceIntakeStage("ready");
         setChangedFact(undefined);
         diagnostic({ event: "council.completed", delegationId: delegationId ?? undefined, ...revision, detail: `mode=${event.mode}` });
-        if (resultDelegation && voice.current) {
-          speak(createCouncilThinkingContext(event.scroll), resultDelegation, "live.thinking.sent", revision);
-          speak(createVoiceCommentary(createVoiceBrief(event.scroll)), resultDelegation, "live.commentary.sent", revision);
+        if (voice.current) {
+          setAuthoritativeLiveStatus("COMPLETED", "Verified synthesis succeeded. The full Decision Scroll is visible. Give only the concise briefing supplied next.", resultDelegation, revision);
+          appendLive(createCouncilThinkingContext(event.scroll), resultDelegation, "thinking", revision);
+          appendLive(createVoiceCommentary(createVoiceBrief(event.scroll)), resultDelegation, "commentary", revision);
         }
         activeDelegation.current = null;
       } else if (event.type === "council.error") {
@@ -135,6 +178,7 @@ export default function App() {
         setPhase("failed");
         setProductMode(scrollRef.current ? "completed" : "conversation");
         setError(event.message);
+        setAuthoritativeLiveStatus("FAILED", "The council did not complete. Briefly say that the attempt failed; do not invent a result.", lifecycle.current.activeRound()?.delegationId ?? null, revision);
       } else if (event.type === "council.interrupted") {
         setPhase("interrupted");
       }
@@ -154,6 +198,7 @@ export default function App() {
         setPhase("failed");
         setProductMode(scrollRef.current ? "completed" : "conversation");
         setError(caught instanceof Error ? caught.message : "Council request failed.");
+        setAuthoritativeLiveStatus("FAILED", "The council did not complete. Briefly say that the attempt failed; do not invent a result.", lifecycle.current.activeRound()?.delegationId ?? null, revision);
       }
     }
   };
@@ -184,8 +229,18 @@ export default function App() {
   const processCompletedUserTurn = async (turn: VoiceTurn, delegation?: LiveDelegation) => {
     if (!turn.text.trim()) return;
     noteConversationTurn(turn.id);
-    if (processedTurns.current.has(turn.id)) {
-      if (delegation && lifecycle.current.bindDelegation(delegation.id, turn.id)) {
+    const active = lifecycle.current.activeRound();
+    const hasDecision = Boolean(scrollRef.current);
+
+    if (!active && !hasDecision && delegation) {
+      const claim = delegationCoordinator.current.claimNative(turn.id, delegation.id);
+      const timer = fallbackTimers.current.get(turn.id);
+      if (timer) clearTimeout(timer);
+      fallbackTimers.current.delete(turn.id);
+      if (claim === "start") {
+        processedTurns.current.add(turn.id);
+        await runCouncil({ delegation, conversationChanged: false });
+      } else if (claim === "bind" && lifecycle.current.bindDelegation(delegation.id, turn.id)) {
         const bound = lifecycle.current.activeRound();
         diagnostic({
           event: "live.delegation.bound_to_revision",
@@ -197,15 +252,59 @@ export default function App() {
       }
       return;
     }
-    if (lifecycle.current.isCausalTurn(turn.id)) return;
-    const active = lifecycle.current.activeRound();
-    const hasDecision = Boolean(scrollRef.current);
-    if (!active && !hasDecision && delegation) {
-      processedTurns.current.add(turn.id);
-      await runCouncil({ delegation, conversationChanged: false });
+
+    if (processedTurns.current.has(turn.id)) {
+      if (delegation && lifecycle.current.bindDelegation(delegation.id, turn.id)) {
+        const bound = lifecycle.current.activeRound();
+        diagnostic({ event: "live.delegation.bound_to_revision", delegationId: delegation.id, conversationRevision: bound?.conversationRevision, deliberationRevision: bound?.deliberationRevision, detail: `late causalTurn=${turn.id}` });
+      }
       return;
     }
-    if (!active && !hasDecision) return;
+    if (lifecycle.current.isCausalTurn(turn.id)) return;
+
+    if (!active && !hasDecision) {
+      if (readinessTurns.current.has(turn.id)) return;
+      readinessTurns.current.add(turn.id);
+      setVoiceIntakeStage("captured");
+      const completedUserTurns = transcriptRef.current
+        .filter((candidate) => candidate.role === "user" && candidate.complete && candidate.text.trim())
+        .slice(-8)
+        .map((candidate) => candidate.text.trim());
+      let readiness;
+      try {
+        readiness = await assessVoiceReadiness({
+          latestTurn: turn.text.trim(),
+          currentContext: contextRef.current.trim() || "Voice-only intake; no separate written context was supplied.",
+          completedUserTurns: completedUserTurns.length ? completedUserTurns : [turn.text.trim()],
+        });
+      } catch {
+        readiness = turn.text.trim().length >= 80
+          ? { action: "convene" as const, missingInformation: [], reason: "The completed voice turn contains enough context for bounded analysis.", confidence: 0.5 }
+          : { action: "clarify" as const, missingInformation: ["the decision or choice to examine"], reason: "The decision is not yet clear enough to convene.", confidence: 0.5 };
+      }
+      // Native delegation may have won while the bounded readiness request was
+      // in flight. Its ACTIVE status must not be overwritten by a late
+      // clarification result, and it must never be followed by a fallback.
+      if (delegationCoordinator.current.sourceFor(turn.id)) return;
+      diagnostic({ event: "live.readiness.assessed", detail: `${readiness.action}:${readiness.confidence}:${readiness.reason}`.slice(0, 500) });
+      if (readiness.action === "clarify") {
+        processedTurns.current.add(turn.id);
+        setVoiceIntakeStage("clarifying");
+        setAuthoritativeLiveStatus("CLARIFYING", `The council has not started. Ask one brief question about: ${readiness.missingInformation.join("; ")}.`);
+        return;
+      }
+      setVoiceIntakeStage("preparing");
+      const timer = setTimeout(() => {
+        fallbackTimers.current.delete(turn.id);
+        if (!delegationCoordinator.current.claimFallback(turn.id)) return;
+        processedTurns.current.add(turn.id);
+        diagnostic({ event: "live.delegation.fallback", detail: `causalTurn=${turn.id}; native delegation grace expired` });
+        void runCouncil({ conversationChanged: false });
+      }, 1_000);
+      fallbackTimers.current.set(turn.id, timer);
+      return;
+    }
+
     processedTurns.current.add(turn.id);
 
     diagnostic({ event: "live.interruption.received", delegationId: delegation?.id, detail: `characters=${turn.text.length}` });
@@ -228,22 +327,21 @@ export default function App() {
     }
     if (action === "clarify") {
       const id = delegation?.id ?? activeDelegation.current;
-      if (id) speak("Ask one brief question to confirm whether the user's latest statement changes a decision constraint. Preserve the current council work until they confirm.", id, "live.commentary.sent");
+      appendLive("Ask one brief question to confirm whether the user's latest statement changes a decision constraint. Preserve the current council work until they confirm.", id, "commentary");
       return;
     }
     if (active) {
       const intent = classifyLocalVoiceIntent(turn.text, hasDecision);
       if (intent === "status") {
         const id = delegation?.id ?? active.delegationId;
-        if (id) speak("Answer the user's process question briefly. The council is still working; do not invent findings or imply synthesis is complete.", id, "live.commentary.sent", active);
+        appendLive("Answer the user's process question briefly. The council is still working; do not invent findings or imply synthesis is complete.", id, "commentary", active);
       }
       return;
     }
     if (scrollRef.current) {
-      if (delegation) {
-        speak(createCouncilThinkingContext(scrollRef.current), delegation.id, "live.thinking.sent");
-        speak(`Answer the user's question conversationally from the verified council context just provided. User asked: ${turn.text.slice(0, 500)} Do not reconvene or invent new analysis.`, delegation.id, "live.commentary.sent");
-      }
+      const id = delegation?.id ?? null;
+      appendLive(createCouncilThinkingContext(scrollRef.current), id, "thinking");
+      appendLive(`Answer the user's question conversationally from the verified council context just provided. User asked: ${turn.text.slice(0, 500)} Do not reconvene or invent new analysis.`, id, "commentary");
     }
   };
 
@@ -253,13 +351,22 @@ export default function App() {
   };
 
   const connectVoice = async () => {
+    setInputMode("voice");
     setVoiceStatus("connecting");
     setError(undefined);
     const session = new LiveVoiceSession();
     voice.current = session;
-    session.addEventListener("ready", () => setVoiceStatus("ready"));
+    session.addEventListener("ready", () => {
+      setVoiceStatus("ready");
+      setVoiceIntakeStage("ready");
+      setAuthoritativeLiveStatus("NOT_STARTED", "The council is waiting. Converse naturally and ask only necessary clarification. Do not say the council is working until status becomes ACTIVE.");
+    });
     session.addEventListener("closed", () => setVoiceStatus("offline"));
-    session.addEventListener("talking", (event) => setVoiceStatus((event as CustomEvent<boolean>).detail ? "talking" : "ready"));
+    session.addEventListener("talking", (event) => {
+      const talking = (event as CustomEvent<boolean>).detail;
+      setVoiceStatus(talking ? "talking" : "ready");
+      if (productModeRef.current === "conversation") setVoiceIntakeStage(talking ? "listening" : "captured");
+    });
     session.addEventListener("turn", (event) => {
       const turn = (event as CustomEvent<VoiceTurn>).detail;
       setTranscript((current) => {
@@ -279,8 +386,14 @@ export default function App() {
     });
     session.addEventListener("diagnostic", (event) => diagnostic((event as CustomEvent<LiveDiagnosticEvent>).detail));
     session.addEventListener("append.acknowledged", (event) => {
-      const detail = (event as CustomEvent<{ kind: "thinking" | "commentary" }>).detail;
-      diagnostic({ event: detail.kind === "thinking" ? "live.thinking.acknowledged" : "live.commentary.acknowledged" });
+      const detail = (event as CustomEvent<{ kind: LiveAppendKind; clientEventId?: string }>).detail;
+      const tracked = detail.clientEventId ? appendTracker.current.acknowledge(detail.clientEventId) : undefined;
+      diagnostic({
+        event: `live.${detail.kind}.acknowledged` as LiveDiagnosticEvent["event"],
+        delegationId: tracked?.delegationId ?? undefined,
+        ...tracked?.revision,
+        detail: detail.clientEventId ? `event=${detail.clientEventId}` : undefined,
+      });
     });
     session.addEventListener("live.error", (event) => {
       const detail = (event as CustomEvent<{ message: string }>).detail;
@@ -295,7 +408,29 @@ export default function App() {
     }
   };
 
-  const visiblePhase = productMode === "reconvening" ? "reconvening" : productMode === "deliberating" ? "deliberating" : productMode;
+  const sendVoiceDecisionNow = () => {
+    const latest = [...transcriptRef.current].reverse().find((turn) => turn.role === "user" && turn.complete && turn.text.trim());
+    if (!latest) { setError("Finish one spoken decision turn first."); return; }
+    const timer = fallbackTimers.current.get(latest.id);
+    if (timer) clearTimeout(timer);
+    fallbackTimers.current.delete(latest.id);
+    if (!delegationCoordinator.current.claimFallback(latest.id)) return;
+    processedTurns.current.add(latest.id);
+    setVoiceIntakeStage("preparing");
+    diagnostic({ event: "live.delegation.fallback", detail: `causalTurn=${latest.id}; user requested immediate handoff` });
+    void runCouncil({ conversationChanged: false });
+  };
+
+  const visiblePhase = productMode === "reconvening"
+    ? "reconvening"
+    : productMode === "deliberating"
+      ? phase === "synthesizing" ? "synthesizing" : "deliberating"
+      : productMode === "conversation" && voiceStatus === "talking"
+        ? "talking"
+        : productMode === "conversation" && voiceIntakeStage !== "ready"
+          ? voiceIntakeStage
+          : productMode;
+  const hasCompletedVoiceTurn = transcript.some((turn) => turn.role === "user" && turn.complete && turn.text.trim());
   return <main className={`mode-${productMode}`}>
     <header>
       <div><span className="eyebrow">A Panchatantra-inspired AI decision council</span><h1>Sagacity <em>Syndicate</em></h1></div>
@@ -310,14 +445,41 @@ export default function App() {
 
     <section className="workspace">
       <div className="conversation-panel">
-        <VoiceControl status={voiceStatus} productMode={productMode} onConnect={connectVoice} onTalk={(active) => voice.current?.setTalking(active)} />
-        <div className="transcript">
-          <div className="section-title"><span>Conversation</span><small>{transcript.length ? "bounded turn history" : "text-first mode"}</small></div>
-          {transcript.length ? transcript.slice(-8).map((turn) => <p className={turn.complete ? "" : "transcript-partial"} key={turn.id}><strong>{turn.role === "user" ? "You" : "Sutradhara"}</strong><span>{turn.text || "Listening…"}</span></p>) : <p className="muted">Your conversation with Sutradhara will appear here.</p>}
+        <div className="input-mode" role="group" aria-label="Decision input mode">
+          <button className={inputMode === "voice" ? "input-mode--active" : ""} onClick={() => setInputMode("voice")}>Speak with Sutradhara</button>
+          <button className={inputMode === "text" ? "input-mode--active" : ""} onClick={() => setInputMode("text")}>Type decision</button>
         </div>
-        <label className="decision-input"><span>Decision context</span><textarea value={context} onChange={(event) => setContext(event.target.value)} placeholder="What are you deciding? Include your objective, hard constraints, and time horizon." /></label>
-        {!scroll && <button className="primary" onClick={() => void runCouncil()} disabled={activePhases.includes(phase)}>Convene the council</button>}
-        {scroll && <div className="reconvene">
+
+        {inputMode === "voice" ? <>
+          <VoiceControl status={voiceStatus} productMode={productMode} onConnect={connectVoice} onTalk={(active) => voice.current?.setTalking(active)} />
+          <p className="mode-help">No written Decision Context is required. Speak naturally; a ready decision is sent to the council automatically.</p>
+          <div
+            className="transcript"
+            ref={transcriptElement}
+            onScroll={(event) => {
+              const element = event.currentTarget;
+              setTranscriptAtLatest(isNearTranscriptEnd(element));
+            }}
+          >
+            <div className="section-title"><span>Conversation</span><small>{transcript.length ? "latest turns" : "waiting for voice"}</small></div>
+            {transcript.length ? transcript.slice(-12).map((turn) => <p className={turn.complete ? "" : "transcript-partial"} key={turn.id}><strong>{turn.role === "user" ? "You" : "Sutradhara"}</strong><span>{turn.text || "Listening…"}</span></p>) : <p className="muted">Your conversation with Sutradhara will appear here.</p>}
+          </div>
+          {!transcriptAtLatest && <button className="latest-button" onClick={() => {
+            setTranscriptAtLatest(true);
+            if (transcriptElement.current) scrollTranscriptToLatest(transcriptElement.current);
+          }}>Jump to latest</button>}
+          {productMode === "conversation" && hasCompletedVoiceTurn && voiceIntakeStage === "preparing" && <button className="secondary" onClick={sendVoiceDecisionNow}>Send to council now</button>}
+          <details className="optional-context">
+            <summary>Add precise written details — optional</summary>
+            <label className="decision-input"><span>Optional context</span><textarea value={context} onChange={(event) => setContext(event.target.value)} placeholder="Add exact figures, names, or constraints that are easier to type." /></label>
+          </details>
+        </> : <>
+          <p className="mode-help">Write the decision and choose Convene. Voice is not required in this mode.</p>
+          <label className="decision-input"><span>Decision context</span><textarea value={context} onChange={(event) => setContext(event.target.value)} placeholder="What are you deciding? Include your objective, hard constraints, and time horizon." /></label>
+          {!scroll && <button className="primary" onClick={() => void runCouncil()} disabled={activePhases.includes(phase)}>Convene the council</button>}
+        </>}
+
+        {scroll && inputMode === "text" && <div className="reconvene">
           <label><span>What materially changed?</span><input value={constraint} onChange={(event) => setConstraint(event.target.value)} placeholder="Add or revise one material constraint" /></label>
           <button className="primary" onClick={() => void manualReconvene()}>Reconvene</button>
         </div>}
@@ -328,7 +490,13 @@ export default function App() {
       <div className="council-panel">
         <div className="section-title"><span>The council</span><small>{roundMode ? `${roundMode} round` : "three independent lenses"}</small></div>
         <div className="agent-list">{names.map((agent) => <AgentCard key={agent} agent={agent} state={agentStates[agent]} />)}</div>
-        <DecisionScroll scroll={scroll} mode={productMode} />
+        <DecisionScroll
+          scroll={scroll}
+          mode={productMode}
+          emptyCopy={inputMode === "text"
+            ? { title: "Ready for written context.", description: "Enter the decision, hard constraints, and time horizon, then choose Convene." }
+            : emptyCopy[voiceIntakeStage]}
+        />
       </div>
     </section>
     <footer><span>Advice, not authority · Logs stay local</span><span>Revisions {conversationRevision.current}/{deliberationRevision.current}</span></footer>

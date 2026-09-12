@@ -2,13 +2,14 @@ import express from "express";
 import OpenAI from "openai";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { DeliberationRequestSchema, LiveDiagnosticEventSchema, VoiceInterruptionRequestSchema, type CouncilEvent } from "../shared/schemas.js";
+import { DeliberationRequestSchema, LiveDiagnosticEventSchema, VoiceInterruptionRequestSchema, VoiceReadinessRequestSchema, type CouncilEvent } from "../shared/schemas.js";
 import { MockAgentRuntime } from "./agents/mock-runtime.js";
 import { OpenAIAgentRuntime } from "./agents/runtime.js";
 import { config } from "./config.js";
 import { createLiveSession } from "./live/session.js";
 import { CouncilOrchestrator } from "./orchestration/council.js";
 import { VoiceMaterialityAssessor } from "./voice/materiality.js";
+import { VoiceReadinessAssessor } from "./voice/readiness.js";
 import { LiveJsonlLogger } from "./logging/live-jsonl.js";
 
 const app = express();
@@ -22,6 +23,7 @@ const council = new CouncilOrchestrator(runtime, {
   synthesis: config.synthesisModel,
 });
 const voiceMateriality = new VoiceMaterialityAssessor(runtime, config.councilModel);
+const voiceReadiness = new VoiceReadinessAssessor(runtime, config.councilModel);
 const liveLogger = new LiveJsonlLogger();
 
 app.get("/api/health", (_request, response) => {
@@ -56,6 +58,15 @@ app.post("/api/voice/interruption-assessment", async (request, response) => {
     return;
   }
   response.json(await voiceMateriality.assess(parsed.data));
+});
+
+app.post("/api/voice/readiness-assessment", async (request, response) => {
+  const parsed = VoiceReadinessRequestSchema.safeParse(request.body);
+  if (!parsed.success) {
+    response.status(400).json({ error: "Invalid voice readiness request.", issues: parsed.error.issues });
+    return;
+  }
+  response.json(await voiceReadiness.assess(parsed.data));
 });
 
 app.post("/api/live/events", async (request, response) => {

@@ -1,6 +1,6 @@
-import { VoiceTurnTracker, type DelegationBinding, type VoiceTurn } from "./turn-tracker";
+import { VoiceTurnTracker, type DelegationBinding, type VoiceTurn } from "./turn-tracker.js";
 
-export type { VoiceTurn } from "./turn-tracker";
+export type { VoiceTurn } from "./turn-tracker.js";
 
 export type LiveDelegation = DelegationBinding & { causalTurn?: VoiceTurn };
 
@@ -76,15 +76,21 @@ export class LiveVoiceSession extends EventTarget {
     this.dispatchEvent(new CustomEvent("talking", { detail: active }));
   }
 
-  appendThinking(content: string, delegationId: string): string {
+  appendThinking(content: string, delegationId: string | null): string {
     const eventId = crypto.randomUUID();
     this.send({ type: "session.thinking.append", event_id: eventId, delegation_id: delegationId, content: content.slice(0, 1_600) });
     return eventId;
   }
 
-  appendCommentary(content: string, delegationId: string): string {
+  appendCommentary(content: string, delegationId: string | null): string {
     const eventId = crypto.randomUUID();
     this.send({ type: "session.commentary.append", event_id: eventId, delegation_id: delegationId, content: content.slice(0, 1_200) });
+    return eventId;
+  }
+
+  appendInstructions(content: string, delegationId: string | null = null): string {
+    const eventId = crypto.randomUUID();
+    this.send({ type: "session.instructions.append", event_id: eventId, delegation_id: delegationId, content: content.slice(0, 1_200) });
     return eventId;
   }
 
@@ -140,9 +146,9 @@ export class LiveVoiceSession extends EventTarget {
         const activeTurn = [...this.turns.list()].reverse().find((turn) => turn.role === "user" && !turn.complete);
         if (activeTurn?.id === turnId) this.scheduleUserCompletion(250);
       }
-    } else if (event.type === "session.thinking.appended" || event.type === "session.commentary.appended") {
+    } else if (event.type === "session.thinking.appended" || event.type === "session.commentary.appended" || event.type === "session.instructions.appended") {
       this.dispatchEvent(new CustomEvent("append.acknowledged", { detail: {
-        kind: event.type === "session.thinking.appended" ? "thinking" : "commentary",
+        kind: event.type === "session.thinking.appended" ? "thinking" : event.type === "session.commentary.appended" ? "commentary" : "instructions",
         clientEventId: event.client_event_id,
       } }));
     } else if (event.type === "error") {

@@ -95,11 +95,33 @@ export const VoiceInterruptionRequestSchema = z.object({
 }).strict();
 export type VoiceInterruptionRequest = z.infer<typeof VoiceInterruptionRequestSchema>;
 
+export const VoiceReadinessAssessmentSchema = z.object({
+  action: z.enum(["clarify", "convene"]),
+  missingInformation: z.array(short(160)).max(2),
+  reason: complete(240),
+  confidence: z.number().min(0).max(1),
+}).strict().superRefine((assessment, ctx) => {
+  if (assessment.action === "convene" && assessment.missingInformation.length) {
+    ctx.addIssue({ code: "custom", message: "A ready decision cannot list missing information." });
+  }
+  if (assessment.action === "clarify" && assessment.missingInformation.length === 0) {
+    ctx.addIssue({ code: "custom", message: "A clarification assessment must identify missing information." });
+  }
+});
+export type VoiceReadinessAssessment = z.infer<typeof VoiceReadinessAssessmentSchema>;
+
+export const VoiceReadinessRequestSchema = z.object({
+  latestTurn: short(1_000),
+  currentContext: short(8_000),
+  completedUserTurns: z.array(short(1_000)).min(1).max(8),
+}).strict();
+export type VoiceReadinessRequest = z.infer<typeof VoiceReadinessRequestSchema>;
+
 export const LiveDiagnosticNameSchema = z.enum([
   "live.session.started", "live.user_turn.started", "live.user_turn.completed",
-  "live.delegation.created", "live.delegation.bound_to_revision", "council.started",
+  "live.delegation.created", "live.delegation.fallback", "live.delegation.bound_to_revision", "live.readiness.assessed", "council.started",
   "council.phase", "council.completed", "live.thinking.sent", "live.commentary.sent",
-  "live.commentary.acknowledged", "live.thinking.acknowledged", "live.interruption.received",
+  "live.instructions.sent", "live.commentary.acknowledged", "live.thinking.acknowledged", "live.instructions.acknowledged", "live.interruption.received",
   "live.interruption.materiality", "council.cancel.requested", "council.stale_result.discarded",
   "live.session.closed", "live.error",
 ]);

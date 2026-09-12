@@ -1,5 +1,22 @@
 # Sagacity Syndicate Test Plan
 
+## Voice handoff regression test
+
+1. Select **Speak with Sutradhara**, start voice, and state a complete decision without entering written context.
+2. Release the control and confirm the empty panel moves through **Decision captured** and **Preparing the council**.
+3. Do not select any manual Convene control. Confirm the UI reaches **The council is deliberating** within the readiness and native-delegation grace path.
+4. Inspect `logs/live-events.jsonl`. Confirm one `live.readiness.assessed` event and exactly one effective start path: native `live.delegation.created`, fallback `live.delegation.fallback`, or native binding to an already-started fallback. Confirm only one `council.started` for that revision.
+5. After completion, confirm the Decision Scroll renders and Sutradhara gives a concise briefing. Confirm send and acknowledgement events are correlated where the provider returns acknowledgements.
+6. Repeat with a deliberately incomplete opening such as “I need help deciding.” Confirm the app remains in clarification and does not falsely show deliberating.
+
+## Input-mode and transcript UX
+
+1. In **Speak with Sutradhara**, confirm Decision Context is labeled optional and no primary Convene action is required.
+2. Switch to **Type decision**. Confirm the text box and **Convene the council** appear and text-first mode still completes.
+3. Generate more transcript turns than fit in the panel. Confirm the scrollbar appears and the view follows the newest turn while at the bottom.
+4. Scroll upward, add another turn, and confirm the reader's position is preserved and **Jump to latest** appears.
+5. Select **Jump to latest** and confirm the newest turn is visible.
+
 This plan separates deterministic automated checks, mock browser testing, live Agents API testing, and real GPT-Live voice validation. Do not treat mock-mode success as proof of account access, microphone behavior, or audible output.
 
 ## 1. Prerequisites
