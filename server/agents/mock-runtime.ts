@@ -29,6 +29,14 @@ export class MockAgentRuntime implements AgentRuntime {
 
   private fixture(instructions: string, input: string): unknown {
     const lower = instructions.toLowerCase();
+    if (lower.includes("voice interruption materiality")) {
+      const parsed = JSON.parse(input) as { utterance?: string };
+      const utterance = parsed.utterance ?? "";
+      const material = /budget|deadline|cannot|can't|already accepted|instead of|remove|half|double|no longer/iu.test(utterance);
+      return material
+        ? { material: true, changedConstraint: utterance, reason: "This utterance changes a decision constraint.", confidence: 0.94 }
+        : { material: false, changedConstraint: null, reason: "This utterance does not change a decision constraint.", confidence: 0.86 };
+    }
     if (lower.includes("impact router")) {
       const material = !/spelling|wording|typo/i.test(input);
       const affected = /budget|cost|cash/i.test(input)

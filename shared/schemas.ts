@@ -63,6 +63,58 @@ export const DecisionScrollSchema = z.object({
 }).strict();
 export type DecisionScroll = z.infer<typeof DecisionScrollSchema>;
 
+export const VoiceBriefSchema = z.object({
+  recommendation: complete(280),
+  why: complete(320),
+  keyTension: complete(260),
+  immediateNextStep: complete(260),
+  reconveneTrigger: complete(240).optional(),
+}).strict().superRefine((brief, ctx) => {
+  const words = Object.values(brief).filter(Boolean).join(" ").trim().split(/\s+/u).length;
+  if (words > 120) ctx.addIssue({ code: "custom", message: "A Voice Brief must contain no more than 120 words." });
+});
+export type VoiceBrief = z.infer<typeof VoiceBriefSchema>;
+
+export const VoiceInterruptionAssessmentSchema = z.object({
+  material: z.boolean(),
+  changedConstraint: short(400).optional(),
+  reason: complete(280),
+  confidence: z.number().min(0).max(1),
+}).strict().superRefine((assessment, ctx) => {
+  if (assessment.material && !assessment.changedConstraint) {
+    ctx.addIssue({ code: "custom", message: "A material interruption must state the changed constraint." });
+  }
+});
+export type VoiceInterruptionAssessment = z.infer<typeof VoiceInterruptionAssessmentSchema>;
+
+export const VoiceInterruptionRequestSchema = z.object({
+  utterance: short(1_000),
+  currentContext: short(8_000),
+  phase: z.enum(["deliberating", "completed"]),
+  currentScroll: DecisionScrollSchema.optional(),
+}).strict();
+export type VoiceInterruptionRequest = z.infer<typeof VoiceInterruptionRequestSchema>;
+
+export const LiveDiagnosticNameSchema = z.enum([
+  "live.session.started", "live.user_turn.started", "live.user_turn.completed",
+  "live.delegation.created", "live.delegation.bound_to_revision", "council.started",
+  "council.phase", "council.completed", "live.thinking.sent", "live.commentary.sent",
+  "live.commentary.acknowledged", "live.thinking.acknowledged", "live.interruption.received",
+  "live.interruption.materiality", "council.cancel.requested", "council.stale_result.discarded",
+  "live.session.closed", "live.error",
+]);
+export type LiveDiagnosticName = z.infer<typeof LiveDiagnosticNameSchema>;
+
+export const LiveDiagnosticEventSchema = z.object({
+  event: LiveDiagnosticNameSchema,
+  sessionId: z.string().trim().max(120).optional(),
+  delegationId: z.string().trim().max(120).optional(),
+  conversationRevision: z.number().int().nonnegative().optional(),
+  deliberationRevision: z.number().int().nonnegative().optional(),
+  detail: z.string().trim().max(500).optional(),
+}).strict();
+export type LiveDiagnosticEvent = z.infer<typeof LiveDiagnosticEventSchema>;
+
 export const DeliberationRequestSchema = z.object({
   deliberationId: z.string().trim().min(1).max(100).optional(),
   conversationRevision: z.number().int().nonnegative(),

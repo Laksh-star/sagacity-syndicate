@@ -71,4 +71,24 @@ describe("CouncilOrchestrator", () => {
     expect(events.some((event) => event.type === "council.result")).toBe(false);
     expect(events.some((event) => event.type === "council.interrupted")).toBe(true);
   });
+
+  it("prevents an aborted old round from mutating its replacement", async () => {
+    const council = new CouncilOrchestrator(new MockAgentRuntime(), { council: "mock", synthesis: "mock" }, silentLogger as never);
+    const oldEvents: CouncilEvent[] = [];
+    const newEvents: CouncilEvent[] = [];
+    const oldRound = council.deliberate({
+      deliberationId: "supersede", conversationRevision: 1, deliberationRevision: 1, context: "Should we proceed?",
+    }, (event) => oldEvents.push(event));
+    await new Promise((resolve) => setTimeout(resolve, 15));
+    await council.interrupt("supersede", 2, "Budget changed.");
+    const replacement = council.deliberate({
+      deliberationId: "supersede", conversationRevision: 2, deliberationRevision: 2,
+      context: "Should we proceed with a smaller budget?", changedConstraint: "The budget is lower.",
+    }, (event) => newEvents.push(event));
+
+    await expect(oldRound).rejects.toBeDefined();
+    await expect(replacement).resolves.toHaveProperty("scroll");
+    expect(newEvents.some((event) => event.type === "council.result")).toBe(true);
+    expect(newEvents.some((event) => event.type === "council.error")).toBe(false);
+  });
 });

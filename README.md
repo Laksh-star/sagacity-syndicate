@@ -49,17 +49,34 @@ Keep `.env` local. It is ignored by git and the API key is never sent to the bro
 2. Select **Start voice** and allow microphone access.
 3. Hold the voice control while speaking, then release.
 4. Sutradhara asks only necessary clarifying questions and delegates when the context is sufficient.
+5. The full Decision Scroll appears in the UI; Sutradhara gives a short executive briefing rather than reading it aloud.
+6. Ask “Why?”, ask for a specialist's view, or ask what would change the decision. These use the verified result without rerunning the council.
+7. State a genuinely changed fact to reconvene. The previous verified Scroll remains visible until its replacement is complete.
 
-Voice uses browser WebRTC. The server creates the `gpt-live-1` session with client delegation. Quiet council progress is returned with `session.thinking.append`; the verified concise decision is returned with `session.commentary.append` for Sutradhara to paraphrase.
+Voice uses browser WebRTC. The server creates the `gpt-live-1` session with client delegation. The browser aggregates transcript fragments into `VoiceTurn` records. Because the current Live protocol does not expose a completed-input-transcript event, releasing push-to-talk initiates finalization; the acknowledged `session.input_audio.muted` boundary plus a short transcript-settle window closes the user turn. A late delta within that utterance updates the same turn instead of creating an interruption.
+
+The delegation's `offset_ms` binds it to the user turn that caused it. That causal turn can never cancel its own council round. Only a later completed turn enters interruption materiality routing:
+
+- acknowledgements, status questions, and questions about the completed decision preserve the round;
+- confident changed constraints cancel/stale the active round and reconvene;
+- ambiguous statements preserve work and prompt one brief clarification.
+
+Spoken delivery and the durable artifact are deliberately different:
+
+- **Decision Scroll** is the authoritative, complete, revision-checked UI result.
+- **Voice Brief** is a deterministic, schema-bounded set of facts for roughly 20–40 seconds of natural paraphrase.
+- `session.thinking.append` receives compact verified council context for later questions.
+- `session.commentary.append` receives only the brief or concise process guidance intended to be spoken.
 
 ## Architecture
 
 ```text
 Browser
   ├─ text UI ───────────────┐
-  └─ GPT-Live WebRTC        │ transcript + client delegation
+  └─ GPT-Live WebRTC        │ fragments → completed turns → delegation
                             ▼
 Express server ── Council state machine
+                    ├─ Voice materiality gate
                     ├─ Impact Router (reconvening only)
                     ├─ independent: Forethought | Quickaction | Examiner
                     ├─ cross-examination: selected agents in parallel
@@ -72,13 +89,15 @@ Key boundaries:
 - `server/agents/` adapts the current `openai` SDK Agents API session/stream interface.
 - `server/orchestration/` owns order, concurrency, cancellation, revisions, and selective reconvening.
 - `shared/schemas.ts` contains bounded Zod contracts for opinions, critiques, routing, events, and the final scroll.
+- `shared/voice.ts` maps a verified Scroll to bounded quiet context and a Voice Brief; it never creates a second decision.
+- `shared/voice-policy.ts` handles obvious non-material turns before using the bounded server-side materiality assessor.
 - `prompts/` keeps every role independently editable.
 
 ## Revisions and interruption
 
-`conversationRevision` advances when accepted conversation context changes. `deliberationRevision` advances when a new council run begins. Results can be shown or spoken only when both captured revisions remain current.
+`conversationRevision` advances for each completed user turn or accepted text-context change. `deliberationRevision` advances only when a council run starts. Non-material conversation can therefore continue without invalidating council work. Results can be shown, added to quiet Live context, or spoken only when both revisions captured by that council round remain current.
 
-User interruption asks the server to cancel known active Agents API turns and invalidates the old revision. Late results are discarded even if provider-side cancellation loses a race.
+A material interruption asks the server to cancel known active Agents API turns, aborts the local stream, and starts a newer revision. Late results are discarded before UI rendering and before either Live append channel, even if provider-side cancellation loses a race.
 
 ## State machine
 
@@ -98,12 +117,16 @@ The `routing` state appears only during reconvening. Agent-card states are proje
 - Critiques: critic, target agents, up to two agreements, 1–3 challenges, revision advice, and severity.
 - Impact route: materiality, unique affected-agent subset, preserved fields, reason, and confidence.
 - Decision Scroll: the seven required fields with explicit string limits and confidence from 0 to 1.
+- Voice Brief: recommendation, reason, key tension, immediate next step, and optional reconvene trigger, with a 120-word hard ceiling.
+- Voice interruption assessment: materiality, optional normalized changed constraint, bounded reason, and confidence.
 
 The Agents API receives JSON Schema output constraints and the server validates again with Zod. Invalid output receives one repair turn, then fails visibly.
 
 ## Logging and privacy
 
-Each orchestration transition and bounded agent result is appended to `logs/deliberations.jsonl`. This is intended for local debugging and may contain sensitive decision context. The log is ignored by git; delete or redact it before sharing a project archive.
+Each orchestration transition and bounded agent result is appended to `logs/deliberations.jsonl`. The client/server Live lifecycle writes bounded event metadata to `logs/live-events.jsonl`, including turn boundaries, delegation binding, revisions, phases, append acknowledgements, cancellation, and stale-result suppression. It does not log API keys, audio, raw deltas, or chain-of-thought. These files are ignored by git and may still contain bounded decision facts; delete or redact them before sharing an archive.
+
+For a voice debugging pass, run `npm run dev`, reproduce the issue, then inspect the two JSONL files. A `session.thinking.appended` or `session.commentary.appended` event confirms the server accepted an append; it does not prove the audio was spoken. Browser microphone, WebRTC, account entitlement, and audible playback still require a real-account smoke test.
 
 ## Commands
 
@@ -119,12 +142,12 @@ npm start          # serve production build on 127.0.0.1:8787
 
 - Single local user; no authentication or database.
 - Mock mode verifies UI and orchestration semantics, not OpenAI account access.
-- The Agents API deliberation path was live-tested on 2026-09-11. Microphone, delegation, and spoken-response behavior still require a separate browser voice smoke test.
-- Transcript events are fragments and can contain recognition errors; the application preserves them as context instead of treating one fragment as a complete turn.
+- Initial Agents API deliberation, full reconvening through the Impact Router, and the voice-materiality schema were live-tested on 2026-09-12. The revised microphone, GPT-Live delegation, follow-up, reconvening, and audible briefing lifecycle still requires a separate normal-browser real-account smoke test.
+- Transcript events are fragments and can contain recognition errors. Turn completion uses the strongest available push-to-talk event boundary, not linguistic guessing.
 
 ## Documentation baseline
 
-The implementation follows the OpenAI documentation current on 2026-09-11:
+The implementation follows the OpenAI documentation checked on 2026-09-12:
 
 - [Getting started with GPT-Live](https://developers.openai.com/api/docs/guides/live)
 - [GPT-Live client delegation](https://developers.openai.com/api/docs/guides/live-delegation?delegation-mode=client)

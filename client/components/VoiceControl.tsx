@@ -1,7 +1,8 @@
 export function VoiceControl({
-  status, onConnect, onTalk,
+  status, productMode, onConnect, onTalk,
 }: {
   status: "offline" | "connecting" | "ready" | "talking";
+  productMode: "conversation" | "deliberating" | "completed" | "reconvening";
   onConnect: () => void;
   onTalk: (active: boolean) => void;
 }) {
@@ -18,7 +19,7 @@ export function VoiceControl({
     onPointerLeave={() => status === "talking" && onTalk(false)}
   >
     <span className="mic">●</span>
-    <strong>{status === "talking" ? "Listening…" : "Hold to speak"}</strong>
-    <small>{status === "talking" ? "Release when finished" : "Sutradhara is ready"}</small>
+    <strong>{status === "talking" ? "Listening…" : productMode === "completed" ? "Ask Sutradhara" : "Hold to speak"}</strong>
+    <small>{status === "talking" ? "Release when finished" : productMode === "deliberating" || productMode === "reconvening" ? "Ask a process question or add a constraint" : productMode === "completed" ? "Explore the verified decision" : "Sutradhara is ready"}</small>
   </button>;
 }

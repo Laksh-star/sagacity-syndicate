@@ -1,0 +1,28 @@
+import { describe, expect, it } from "vitest";
+import { classifyLocalVoiceIntent, interruptionAction, obviousNonMaterialAssessment } from "../shared/voice-policy.js";
+
+describe("voice interruption policy", () => {
+  it("does not invalidate a council for a conversational acknowledgement", () => {
+    const assessment = obviousNonMaterialAssessment("Okay.", false);
+    expect(assessment).toMatchObject({ material: false, confidence: 0.99 });
+    expect(interruptionAction(assessment!)).toBe("continue");
+  });
+
+  it("keeps post-decision explanation questions in explore mode", () => {
+    expect(classifyLocalVoiceIntent("Why?", true)).toBe("follow_up");
+    expect(classifyLocalVoiceIntent("What did Forethought think?", true)).toBe("follow_up");
+  });
+
+  it("reconvenes for a confident material changed constraint", () => {
+    expect(interruptionAction({
+      material: true,
+      changedConstraint: "The budget is ₹8 lakh instead of ₹20 lakh.",
+      reason: "The budget constraint changed.",
+      confidence: 0.96,
+    })).toBe("reconvene");
+  });
+
+  it("preserves work and asks for clarification when materiality is ambiguous", () => {
+    expect(interruptionAction({ material: false, reason: "The statement may imply a change.", confidence: 0.4 })).toBe("clarify");
+  });
+});

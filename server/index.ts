@@ -2,12 +2,14 @@ import express from "express";
 import OpenAI from "openai";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { DeliberationRequestSchema, type CouncilEvent } from "../shared/schemas.js";
+import { DeliberationRequestSchema, LiveDiagnosticEventSchema, VoiceInterruptionRequestSchema, type CouncilEvent } from "../shared/schemas.js";
 import { MockAgentRuntime } from "./agents/mock-runtime.js";
 import { OpenAIAgentRuntime } from "./agents/runtime.js";
 import { config } from "./config.js";
 import { createLiveSession } from "./live/session.js";
 import { CouncilOrchestrator } from "./orchestration/council.js";
+import { VoiceMaterialityAssessor } from "./voice/materiality.js";
+import { LiveJsonlLogger } from "./logging/live-jsonl.js";
 
 const app = express();
 app.use(express.json({ limit: "64kb" }));
@@ -19,6 +21,8 @@ const council = new CouncilOrchestrator(runtime, {
   council: config.councilModel,
   synthesis: config.synthesisModel,
 });
+const voiceMateriality = new VoiceMaterialityAssessor(runtime, config.councilModel);
+const liveLogger = new LiveJsonlLogger();
 
 app.get("/api/health", (_request, response) => {
   response.json({ ok: true, mode: config.mockCouncil ? "mock" : "live", liveEnabled: Boolean(config.apiKey) });
@@ -43,6 +47,25 @@ app.post("/api/live/session", async (request, response) => {
     }
     response.status(503).json({ error: error instanceof Error ? error.message : "GPT-Live is unavailable." });
   }
+});
+
+app.post("/api/voice/interruption-assessment", async (request, response) => {
+  const parsed = VoiceInterruptionRequestSchema.safeParse(request.body);
+  if (!parsed.success) {
+    response.status(400).json({ error: "Invalid voice interruption request.", issues: parsed.error.issues });
+    return;
+  }
+  response.json(await voiceMateriality.assess(parsed.data));
+});
+
+app.post("/api/live/events", async (request, response) => {
+  const parsed = LiveDiagnosticEventSchema.safeParse(request.body);
+  if (!parsed.success) {
+    response.status(400).json({ error: "Invalid Live diagnostic event." });
+    return;
+  }
+  await liveLogger.write(parsed.data);
+  response.status(202).end();
 });
 
 app.post("/api/deliberations", async (request, response) => {

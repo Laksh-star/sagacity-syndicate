@@ -1,4 +1,12 @@
-import { CouncilEventSchema, type CouncilEvent, type DeliberationRequest } from "../shared/schemas";
+import {
+  CouncilEventSchema,
+  VoiceInterruptionAssessmentSchema,
+  type CouncilEvent,
+  type DeliberationRequest,
+  type LiveDiagnosticEvent,
+  type VoiceInterruptionAssessment,
+  type VoiceInterruptionRequest,
+} from "../shared/schemas";
 
 export async function streamDeliberation(
   request: DeliberationRequest,
@@ -35,4 +43,23 @@ export async function interruptDeliberation(id: string, nextConversationRevision
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ nextConversationRevision, reason: "User added or changed a constraint." }),
   });
+}
+
+export async function assessVoiceInterruption(request: VoiceInterruptionRequest): Promise<VoiceInterruptionAssessment> {
+  const response = await fetch("/api/voice/interruption-assessment", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  if (!response.ok) throw new Error(`Voice interruption assessment failed (${response.status}).`);
+  return VoiceInterruptionAssessmentSchema.parse(await response.json());
+}
+
+export function recordLiveDiagnostic(event: LiveDiagnosticEvent): void {
+  void fetch("/api/live/events", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(event),
+    keepalive: true,
+  }).catch(() => undefined);
 }

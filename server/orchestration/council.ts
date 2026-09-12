@@ -54,7 +54,8 @@ export class CouncilOrchestrator {
       state: initialCouncilState(), abort: new AbortController(), sessions: {}, opinions: {}, critiques: {},
     };
     if (existing) record.abort.abort("Superseded by a newer deliberation.");
-    record.abort = new AbortController();
+    const runAbort = new AbortController();
+    record.abort = runAbort;
     record.state.conversationRevision = request.conversationRevision;
     record.state.deliberationRevision = request.deliberationRevision;
     this.records.set(id, record);
@@ -72,7 +73,7 @@ export class CouncilOrchestrator {
       let mode: "initial" | "selective" | "full" | "preserved" = existing ? "full" : "initial";
       if (existing && request.changedConstraint && record.scroll) {
         this.setPhase(id, record, "routing", emit);
-        const route = await this.routeImpact(request, record.abort.signal);
+        const route = await this.routeImpact(request, runAbort.signal);
         this.assertCurrent(record, captured);
         emit({ type: "router.result", route });
         await this.log(id, record, "router.result", route);
@@ -88,7 +89,7 @@ export class CouncilOrchestrator {
       this.setPhase(id, record, "independent", emit);
       await Promise.all(selected.map(async (agent) => {
         this.setAgent(id, record, agent, "thinking", emit);
-        const opinion = await this.runOpinion(agent, request.context, request.changedConstraint, record, record.abort.signal);
+        const opinion = await this.runOpinion(agent, request.context, request.changedConstraint, record, runAbort.signal);
         this.assertCurrent(record, captured);
         record.opinions[agent] = opinion;
         this.setAgent(id, record, agent, "done", emit);
@@ -99,7 +100,7 @@ export class CouncilOrchestrator {
       this.setPhase(id, record, "cross_examining", emit);
       await Promise.all(selected.map(async (agent) => {
         this.setAgent(id, record, agent, "challenging", emit);
-        const critique = await this.runCritique(agent, record, record.abort.signal);
+        const critique = await this.runCritique(agent, record, runAbort.signal);
         this.assertCurrent(record, captured);
         record.critiques[agent] = critique;
         this.setAgent(id, record, agent, "done", emit);
@@ -107,7 +108,7 @@ export class CouncilOrchestrator {
       }));
 
       this.setPhase(id, record, "synthesizing", emit);
-      const scroll = await this.synthesize(request.context, record, record.abort.signal);
+      const scroll = await this.synthesize(request.context, record, runAbort.signal);
       this.assertCurrent(record, captured);
       record.scroll = scroll;
       this.setPhase(id, record, "completed", emit);
@@ -115,10 +116,12 @@ export class CouncilOrchestrator {
       await this.log(id, record, "council.result", { mode, scroll });
       return { deliberationId: id, scroll };
     } catch (error) {
-      if (record.abort.signal.aborted || (error instanceof DOMException && error.name === "AbortError")) {
-        if (record.state.phase !== "interrupted") this.setPhase(id, record, "interrupted", emit);
+      const current = record.state.conversationRevision === captured.conversationRevision
+        && record.state.deliberationRevision === captured.deliberationRevision;
+      if (runAbort.signal.aborted || !current || (error instanceof DOMException && error.name === "AbortError")) {
+        if (current && record.state.phase !== "interrupted") this.setPhase(id, record, "interrupted", emit);
         emit({ type: "council.interrupted", reason: "A newer conversation constraint superseded this round." });
-      } else {
+      } else if (current) {
         for (const agent of agents) if (["thinking", "challenging"].includes(record.state.agents[agent])) this.setAgent(id, record, agent, "error", emit);
         this.setPhase(id, record, "failed", emit);
         const message = error instanceof Error ? error.message : "Council failed.";
@@ -200,7 +203,6 @@ export class CouncilOrchestrator {
       schema: CritiqueSchema,
       signal,
     });
-    record.sessions[agent] = run.sessionId;
     const critique = CritiqueSchema.parse(run.output);
     if (critique.critic !== agent) throw new Error(`${agent} returned the wrong critic identity.`);
     return critique;
