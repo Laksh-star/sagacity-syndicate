@@ -14,6 +14,7 @@ The agents analyze independently, cross-examine one another, and feed a bounded 
 - [OpenAI Feature Matrix](FEATURE_MATRIX.md) — what GPT-Live and Agents API capabilities are used, missing, appropriate, or deliberately deferred, with implementation paths.
 - [User Guide](USER_GUIDE.md) — practical voice and text workflows, result interpretation, follow-ups, privacy, and troubleshooting.
 - [Test Plan](TEST_PLAN.md) — automated, mock, live Agents API, and real GPT-Live validation.
+- [Live Voice Test Trail — 13 September 2026](docs/2026-09-13-live-voice-test-trail.md) — observed responses, lifecycle evidence, failures, corrective commits, and remaining live validation.
 - [Implementation Note](IMPLEMENTATION_NOTE.md) — the original failure analysis and chosen fix.
 
 ![Sagacity Syndicate showing a completed live Bangalore relocation decision](docs/assets/bangalore-decision-scroll.jpg)
@@ -80,7 +81,7 @@ Spoken delivery and the durable artifact are deliberately different:
 
 The transcript is a bounded, scrollable turn history. It follows new turns while the reader is at the bottom, preserves the reader's position after they scroll upward, and offers **Jump to latest**.
 
-The newest authoritative Decision Scroll and its revisions survive a page refresh in local browser storage; raw transcript and original intake text do not. When voice reconnects after a refresh, the application immediately restores the verified Scroll as quiet GPT-Live context before accepting follow-up questions. **Start a new decision** removes the saved record and resets the local session.
+The newest authoritative Decision Scroll and its revisions survive a page refresh in local browser storage; raw transcript and original intake text do not. When voice reconnects after a refresh, the application immediately restores the verified Scroll as quiet GPT-Live context before accepting follow-up questions. If the server also restarted, a material change carries the prior Scroll into the Impact Router and performs one full council rebuild because provider sessions and specialist opinions are not persisted. **Start a new decision** removes the saved record and resets the local session.
 
 ## Architecture
 
@@ -159,7 +160,7 @@ npm start          # serve production build on 127.0.0.1:8787
 
 - Single local user; no authentication or database.
 - Mock mode verifies UI and orchestration semantics, not OpenAI account access.
-- Initial Agents API deliberation, full reconvening through the Impact Router, and the voice-materiality schema were live-tested on 2026-09-12. The revised microphone, GPT-Live delegation, follow-up, reconvening, and audible briefing lifecycle still requires a separate normal-browser real-account smoke test.
+- Initial Agents API deliberation and Impact Router reconvening were live-tested on 2026-09-12. GPT-Live delegation, post-decision exploration, refresh persistence, explicit deadline reconvening, phase progress, and concise audible briefing were live-tested on 2026-09-13. The restart-safe semantic-continuity correction is covered by automated tests but still requires one real-account microphone retest.
 - Transcript events are fragments and can contain recognition errors. Turn completion uses the strongest available push-to-talk event boundary, not linguistic guessing.
 
 ## Documentation baseline

@@ -512,7 +512,9 @@ live.commentary.sent
 
 The application does not log API keys, microphone audio, raw transcript deltas, or private chain-of-thought. Logs can contain bounded decision facts and complete Scroll fields, so review or delete them before sharing a project archive.
 
-The browser persists only the latest authoritative Scroll, round mode, council ID, and revision counters. It does not persist raw voice turns or the original decision prompt. A refresh restores the completed result. When a new Live connection becomes ready, the application appends that verified result as bounded quiet context and marks the authoritative status `COMPLETED` before new follow-ups are handled. Completed user turns enter a serial processing queue so asynchronous materiality checks cannot finish out of conversational order. **Start a new decision** deletes the record and closes the old Live session.
+The browser persists only the latest authoritative Scroll, round mode, council ID, and revision counters. It does not persist raw voice turns or the original decision prompt. A refresh restores the completed result. When a new Live connection becomes ready, the application appends that verified result as bounded quiet context and marks the authoritative status `COMPLETED` before new follow-ups are handled. Completed user turns enter a serial processing queue so asynchronous materiality checks cannot finish out of conversational order.
+
+On reconvening, the client always combines the prior verified Scroll with the latest conversation and changed constraint. If the server has also restarted and no in-memory council record exists, it hydrates the prior Scroll from `previousScroll`, runs the Impact Router, and performs a full three-specialist rebuild. A Scroll alone cannot safely recreate provider session IDs or the specialists' bounded prior opinions, so the server does not pretend that a selective continuation is available. **Start a new decision** deletes the record and closes the old Live session.
 
 ## 15. Configuration and model replacement
 

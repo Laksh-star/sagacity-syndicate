@@ -266,6 +266,7 @@ Expected:
 - The raw transcript and original intake prompt are not restored.
 - Reconnect voice and verify Sutradhara can answer from the restored Scroll without asking for the original decision again.
 - Say “Actually I need to decide within five days, not a few weeks.” Verify it is treated as material, a newer revision starts, and a second short utterance cannot overtake its materiality assessment.
+- Restart the local server between the original decision and that correction. Verify the request includes `previousScroll`, the log records `council.context.hydrated`, all three specialists rerun, and the result mode is `full` rather than `initial`.
 - Starting voice creates a new Live media session.
 - **Start a new decision** removes the stored result and returns the UI to an empty conversation state.
 

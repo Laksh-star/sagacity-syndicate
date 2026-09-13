@@ -59,6 +59,27 @@ describe("CouncilOrchestrator", () => {
     expect(events).toContainEqual(expect.objectContaining({ type: "council.result", mode: "selective" }));
   });
 
+  it("hydrates a persisted Scroll and fully reconvenes after a server restart", async () => {
+    const seedCouncil = new CouncilOrchestrator(new MockAgentRuntime(), { council: "mock", synthesis: "mock" }, silentLogger as never);
+    const first = await seedCouncil.deliberate({
+      deliberationId: "persisted", conversationRevision: 7, deliberationRevision: 1,
+      context: "Should we launch a narrow news product pilot?",
+    }, () => {});
+
+    const restartedCouncil = new CouncilOrchestrator(new MockAgentRuntime(), { council: "mock", synthesis: "mock" }, silentLogger as never);
+    const events: CouncilEvent[] = [];
+    await restartedCouncil.deliberate({
+      deliberationId: "persisted", conversationRevision: 8, deliberationRevision: 2,
+      context: "Prior verified decision: launch a narrow news product pilot. Current change: decide within five days.",
+      changedConstraint: "The decision deadline is five days, not five weeks.",
+      previousScroll: first.scroll,
+    }, (event) => events.push(event));
+
+    expect(events).toContainEqual(expect.objectContaining({ type: "council.phase", phase: "routing" }));
+    expect(events.filter((event) => event.type === "agent.state" && event.state === "thinking")).toHaveLength(3);
+    expect(events).toContainEqual(expect.objectContaining({ type: "council.result", mode: "full" }));
+  });
+
   it("invalidates an interrupted conversation revision", async () => {
     const events: CouncilEvent[] = [];
     const council = new CouncilOrchestrator(new MockAgentRuntime(), { council: "mock", synthesis: "mock" }, silentLogger as never);

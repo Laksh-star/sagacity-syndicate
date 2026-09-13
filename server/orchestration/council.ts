@@ -57,6 +57,8 @@ export class CouncilOrchestrator {
     const record = existing ?? {
       state: initialCouncilState(), abort: new AbortController(), sessions: {}, opinions: {}, critiques: {}, activeSessions: new Set(), metrics: [],
     };
+    const hydratedFromRequest = !existing && Boolean(request.previousScroll);
+    if (hydratedFromRequest) record.scroll = request.previousScroll;
     if (existing) {
       record.abort.abort("Superseded by a newer deliberation.");
       if (["routing", "independent", "cross_examining", "synthesizing"].includes(record.state.phase)) {
@@ -82,8 +84,14 @@ export class CouncilOrchestrator {
 
     try {
       let selected: AgentName[] = [...agents];
-      let mode: "initial" | "selective" | "full" | "preserved" = existing ? "full" : "initial";
-      if (existing && request.changedConstraint && record.scroll) {
+      let mode: "initial" | "selective" | "full" | "preserved" = existing || hydratedFromRequest ? "full" : "initial";
+      if (hydratedFromRequest) {
+        await this.log(id, record, "council.context.hydrated", {
+          source: "previousScroll",
+          reason: "The server had no in-memory record for this persisted browser decision.",
+        });
+      }
+      if (request.changedConstraint && record.scroll) {
         this.setPhase(id, record, "routing", emit);
         const route = await this.routeImpact(id, request, record, runAbort.signal);
         this.assertCurrent(record, captured);
@@ -96,6 +104,11 @@ export class CouncilOrchestrator {
           return { deliberationId: id, scroll: record.scroll };
         }
         selected = route.confidence < 0.65 ? [...agents] : route.affectedAgents;
+        // A persisted Scroll can restore authoritative decision context after a
+        // server restart, but it cannot restore provider sessions or bounded
+        // specialist opinions. Run all three specialists once to rebuild that
+        // state instead of inventing missing opinions for a selective round.
+        if (hydratedFromRequest) selected = [...agents];
         mode = selected.length === agents.length ? "full" : "selective";
       }
 

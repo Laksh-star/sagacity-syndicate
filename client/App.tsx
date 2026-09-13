@@ -9,7 +9,7 @@ import { assessVoiceInterruption, assessVoiceReadiness, interruptDeliberation, r
 import { AgentCard } from "./components/AgentCard";
 import { DecisionScroll } from "./components/DecisionScroll";
 import { VoiceControl } from "./components/VoiceControl";
-import { clearPersistedDecision, loadPersistedDecision, persistDecision, restoredDecisionContext } from "./persisted-decision";
+import { clearPersistedDecision, loadPersistedDecision, persistDecision, reconveningDecisionContext, restoredDecisionContext } from "./persisted-decision";
 import { VoiceCouncilLifecycle, type CouncilRevision } from "./voice/council-lifecycle";
 import { LiveAppendTracker, type LiveAppendKind } from "./voice/append-tracker";
 import { InitialHandoffGate, VoiceDelegationCoordinator } from "./voice/delegation-coordinator";
@@ -127,11 +127,14 @@ export default function App() {
   };
 
   const runCouncil = async (options: { changedConstraint?: string; delegation?: LiveDelegation; reconvening?: boolean; conversationChanged?: boolean } = {}) => {
-    const decisionContext = buildVoiceDecisionContext(
+    const currentDecisionContext = buildVoiceDecisionContext(
       contextRef.current,
       transcriptRef.current,
       options.delegation?.causalTurn,
-    ) || (scrollRef.current ? restoredDecisionContext(scrollRef.current) : "");
+    );
+    const decisionContext = options.reconvening && scrollRef.current
+      ? reconveningDecisionContext(scrollRef.current, currentDecisionContext)
+      : currentDecisionContext || (scrollRef.current ? restoredDecisionContext(scrollRef.current) : "");
     if (!decisionContext) { setError("Describe the decision before convening the council."); return; }
 
     setError(undefined);

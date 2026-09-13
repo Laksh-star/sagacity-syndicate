@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clearPersistedDecision, loadPersistedDecision, persistDecision, restoredDecisionContext } from "../client/persisted-decision.js";
+import { clearPersistedDecision, loadPersistedDecision, persistDecision, reconveningDecisionContext, restoredDecisionContext } from "../client/persisted-decision.js";
 import { DecisionScrollSchema } from "../shared/schemas.js";
 
 const scroll = DecisionScrollSchema.parse({
@@ -52,6 +52,15 @@ describe("authoritative decision persistence", () => {
     const context = restoredDecisionContext(scroll);
     expect(context).toContain("Prior verified decision: Run the pilot.");
     expect(context).toContain("Prior Examiner view:");
+    expect(context).toContain("Prior reconvene trigger:");
+    expect(context).toContain("Prior confidence: 76%.");
+    expect(context.length).toBeLessThanOrEqual(8_000);
+  });
+
+  it("combines a restored Scroll with the latest changed constraint", () => {
+    const context = reconveningDecisionContext(scroll, "User: Actually, I need to decide within five days.");
+    expect(context).toContain("Prior verified decision: Run the pilot.");
+    expect(context).toContain("Actually, I need to decide within five days.");
     expect(context.length).toBeLessThanOrEqual(8_000);
   });
 

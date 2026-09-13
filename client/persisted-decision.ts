@@ -57,5 +57,15 @@ export function restoredDecisionContext(scroll: DecisionScroll): string {
     `Prior Forethought view: ${scroll.forethought}`,
     `Prior Quickaction view: ${scroll.quickaction}`,
     `Prior Examiner view: ${scroll.examiner}`,
+    `Prior reconvene trigger: ${scroll.triggerToReconvene}`,
+    `Prior confidence: ${Math.round(scroll.confidence * 100)}%.`,
   ].join("\n").slice(0, 8_000);
+}
+
+export function reconveningDecisionContext(scroll: DecisionScroll, latestContext: string): string {
+  const prior = restoredDecisionContext(scroll);
+  const heading = "\n\nCurrent conversation and changed constraint:\n";
+  const available = Math.max(0, 8_000 - prior.length - heading.length);
+  const latest = available > 0 ? latestContext.trim().slice(-available) : "";
+  return latest ? `${prior}${heading}${latest}` : prior;
 }
