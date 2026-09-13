@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { MockAgentRuntime } from "../server/agents/mock-runtime.js";
 import type { AgentRuntime } from "../server/agents/runtime.js";
-import { CouncilOrchestrator } from "../server/orchestration/council.js";
+import { cancellationIdempotencyKey, CouncilOrchestrator } from "../server/orchestration/council.js";
 import type { CouncilEvent } from "../shared/schemas.js";
 
 const silentLogger = { write: async () => {} };
@@ -109,5 +109,49 @@ describe("CouncilOrchestrator", () => {
     expect(newEvents).not.toContainEqual(expect.objectContaining({ type: "council.error" }));
     expect(newEvents.filter((event) => event.type === "council.phase").map((event) => event.type === "council.phase" && event.phase))
       .toEqual(["ready", "independent", "cross_examining", "synthesizing", "completed"]);
+  });
+
+  it("logs bounded per-run and aggregate telemetry", async () => {
+    const entries: Array<{ event: string; data?: unknown }> = [];
+    const logger = { write: async (entry: { event: string; data?: unknown }) => { entries.push(entry); } };
+    const council = new CouncilOrchestrator(new MockAgentRuntime(), { council: "mock", synthesis: "mock" }, logger as never);
+    await council.deliberate({
+      deliberationId: "telemetry", conversationRevision: 1, deliberationRevision: 1, context: "Should we run a pilot?",
+    }, () => {});
+
+    expect(entries.filter((entry) => entry.event === "agent.run")).toHaveLength(7);
+    expect(entries).toContainEqual(expect.objectContaining({
+      event: "council.telemetry",
+      data: expect.objectContaining({ calls: 7, repairedCalls: 0 }),
+    }));
+  });
+
+  it("uses deterministic bounded cancellation keys", () => {
+    const first = cancellationIdempotencyKey("decision", 2, "session");
+    expect(first).toBe(cancellationIdempotencyKey("decision", 2, "session"));
+    expect(first).not.toBe(cancellationIdempotencyKey("decision", 3, "session"));
+    expect(first.length).toBeLessThanOrEqual(256);
+  });
+
+  it("passes idempotency keys when cancelling active provider sessions", async () => {
+    const base = new MockAgentRuntime();
+    const cancellations: Array<{ sessionId: string; key?: string }> = [];
+    const runtime: AgentRuntime = {
+      start: (args) => base.start(args),
+      continue: (args) => base.continue(args),
+      cancel: async (sessionId, key) => { cancellations.push({ sessionId, key }); },
+      status: (sessionId) => base.status(sessionId),
+    };
+    const council = new CouncilOrchestrator(runtime, { council: "mock", synthesis: "mock" }, silentLogger as never);
+    const pending = council.deliberate({
+      deliberationId: "cancel-keys", conversationRevision: 1, deliberationRevision: 1, context: "Should we proceed?",
+    }, () => {});
+    await new Promise((resolve) => setTimeout(resolve, 15));
+    await council.interrupt("cancel-keys", 2, "Constraint changed.");
+    await expect(pending).rejects.toBeDefined();
+
+    expect(cancellations).toHaveLength(3);
+    expect(cancellations.every(({ key }) => key?.startsWith("sagacity-cancel-") && key.length <= 256)).toBe(true);
+    expect(new Set(cancellations.map(({ key }) => key)).size).toBe(3);
   });
 });

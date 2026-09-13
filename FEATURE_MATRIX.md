@@ -50,7 +50,7 @@ Priority uses **Now**, **Next**, **Later**, or **Avoid**. “Avoid” means the 
 | Primary WebSocket connection | **Not applicable** | The product is a browser voice UI, so WebRTC is used. | Yes, for a server-audio or non-browser client. | Do not add alongside WebRTC without a concrete server-side audio requirement. | Avoid now |
 | Telephony / SIP | **Not applicable** | No phone interface exists. | Yes, as a separate channel adapter. | Requires call lifecycle, disclosure, consent, cost controls, and phone-specific testing. It does not improve the current browser POC. | Avoid now |
 | Live session recording/download | **Not used** | The app does not persist audio. | Technically possible where supported, but not recommended by default. | Conflicts with the current privacy-minimizing design. Add only with explicit consent, retention, deletion, and access controls. | Avoid by default |
-| Session recovery across refresh | **Not used** | Refresh starts a new browser/Live session; the visible result is not stored durably. | **Yes.** Persist a redacted local decision record plus Live/council identifiers, restore UI state, and start a new Live session seeded with bounded verified context. | Valuable for reliability; do not attempt to treat a closed media connection as still active. | Next |
+| Session recovery across refresh | **Partial** | The latest validated Scroll, round mode, council ID, and revisions restore from browser storage. Raw transcript and original prompt are not stored; Live starts as a new media session. | **Yes.** Full recovery could add an opt-in local decision record and seed a new Live session with bounded verified context. | The valuable safe subset is complete. Do not treat a closed media connection as still active. | Now |
 
 ## OpenAI Agents API capability mapping
 
@@ -66,11 +66,11 @@ Priority uses **Now**, **Next**, **Later**, or **Avoid**. “Avoid” means the 
 | Application-managed parallelism | **Used** | `Promise.all` runs the three independent opinions and selected critiques in parallel. | Already present. | This produces deterministic council membership and faithful card states. | Now |
 | Native Agents API multi-agent/subagent orchestration | **Not used** | The council does not ask one provider agent to create and manage subagents. | Technically yes, but **not recommended now**. | It would obscure the explicit state machine, per-agent schemas, UI cards, selective reconvening, and stale-result guards. Evaluate only if the product later favors autonomy over inspectability. | Avoid now |
 | Provider-side turn cancellation | **Used** | Superseded specialist sessions receive `agent.session.input.cancel`; the local stream is also aborted. | **Can improve.** Add an idempotency key and capture cancellation outcome events. | Provider cancellation saves work; revision checks remain the actual correctness boundary. | Next |
-| Input-event idempotency | **Not used** | Cancellation events are sent once without an explicit idempotency key. | **Yes.** Derive a stable key from deliberation ID, revision, session ID, and event purpose; reuse it on uncertain retries. | Small, useful hardening for cancellation and future tool-result submissions. | Next |
-| Session status retrieval | **Not used** | The app relies on its active stream and local lifecycle. | **Yes.** Persist session IDs and retrieve status after network uncertainty before deciding to retry. | Useful for recovery and support diagnostics; unnecessary for normal happy-path rendering. | Next |
+| Input-event idempotency | **Used** | Every cancellation request carries a stable SHA-256-derived key based on deliberation ID, revision, session ID, and purpose. | Already present. | Reuse the same pattern for future tool-result or retried message events. | Now |
+| Session status retrieval | **Used** | If a provider event stream fails after a session ID is known, the runtime retrieves `idle`, `in_progress`, `requires_action`, or `failed` status and surfaces it without blindly retrying. | Already present. | A future recovery UI could expose the bounded reconciled status to developers. | Now |
 | Session/turn/item inspection | **Not used** | The POC logs bounded application events instead of copying provider histories. | **Yes.** Add a developer-only diagnostic endpoint that retrieves allowlisted metadata or output items on demand. | Keep disabled in ordinary UI and avoid exposing reasoning items or sensitive inputs. | Later |
-| Usage and token accounting | **Not used** | The runtime ignores session usage data. | **Yes.** Capture best-effort token usage and per-stage elapsed time, then add a local developer summary. | High-value for comparing models and controlling cost; do not mix it into the user-facing decision. | Next |
-| Metadata on sessions | **Not used** | Deliberation IDs and revisions exist only in local application state/logs. | **Yes.** Attach bounded IDs such as council role, deliberation ID, and revision—never decision text or secrets. | Improves provider-side trace correlation. | Next |
+| Usage and token accounting | **Used** | Completed-turn usage and per-run duration are logged by stage, with an aggregate round telemetry event. | Already present. | Add a developer-only dashboard later if repeated model comparisons justify it. | Now |
+| Metadata on sessions | **Used** | New sessions receive application, deliberation ID, conversation revision, deliberation revision, stage, and optional role metadata—never decision text or secrets. | Already present. | Provider and local diagnostics can now be correlated without copying private prompts into metadata. | Now |
 | Explicit reasoning effort / summary configuration | **Not used** | The model default is accepted; no reasoning summary is stored or displayed. | **Yes.** Add per-role environment settings and benchmark quality, latency, and cost. | Do not expose raw reasoning; the bounded opinion/critique schemas remain the public explanation surface. | Later |
 | Service-tier selection | **Not used** | The default service tier is accepted. | **Yes.** Add an optional environment variable and pass it through the inline agent config. | Useful only after usage/latency telemetry exists. | Later |
 | Custom function tools | **Not used** | Specialists reason only over supplied decision context. | **Yes.** Define allowlisted, schema-bounded tools, handle `required_actions`, enforce user approval for side effects, and include citations in the final evidence model. | Useful for current facts such as prices or schedules. This is the strongest substantive extension after core reliability. | Next |
@@ -81,7 +81,7 @@ Priority uses **Now**, **Next**, **Later**, or **Avoid**. “Avoid” means the 
 | Durable session artifacts | **Not used** | The Decision Scroll is an application artifact in UI/logs, not an Agents API file artifact. | **Yes.** Publish/download artifacts from hosted turns when agents create files. | Not needed for the Scroll; a local Markdown/PDF export is simpler. Useful if future agents produce spreadsheets or reports. | Later |
 | Vault IDs on sessions | **Not used** | No vaults are attached. | **Yes**, together with MCP/tool integration and a credential lifecycle. | Never add merely for convenience; it creates a new secret-management responsibility. | Later |
 | Required-action handling | **Not used** | Sessions currently have no tools and therefore no tool-result loop. | **Yes.** Pause the turn, validate the requested tool call, obtain approval when required, execute, and submit a structured tool-result event. | Mandatory before adding any custom or MCP tool. | Next with tools |
-| Persisted council history across app restarts | **Not used** | Session IDs are held in memory and local JSONL logs are diagnostic only. | **Yes.** Add a small local datastore for redacted decision records, revisions, session IDs, and current status; reconcile with session retrieval on restart. | Valuable for recovery, but requires explicit retention and deletion controls. | Next |
+| Persisted council history across app restarts | **Partial** | The newest authoritative Scroll and revision record persist locally; **Start a new decision** deletes them. Provider session IDs and raw intake history remain memory-only. | **Yes.** Multi-decision history would require an opt-in datastore, retention controls, and session reconciliation. | Latest-result recovery is complete; long-term history is deliberately deferred. | Later |
 
 ## Recommended implementation order
 
@@ -89,11 +89,15 @@ The missing features are not equally valuable. A sensible order is:
 
 ### 1. Reliability and measurement
 
-1. Record per-stage latency and best-effort Agents API usage.
-2. Add stable idempotency keys for cancellation and future input events.
-3. Add session-status reconciliation for uncertain network failures.
-4. Persist a redacted local decision record so refresh does not erase the latest Scroll.
-5. Strengthen explicit Live playback/barge-in handling without coupling it to council cancellation.
+Completed in the current repository:
+
+1. Per-stage latency and best-effort Agents API usage logging.
+2. Stable idempotency keys for cancellation input events.
+3. Session-status reconciliation for uncertain stream failures.
+4. Bounded latest-Scroll and revision recovery across refresh.
+5. Provider metadata for application, stage, role, and revisions.
+
+The next reliability item is explicit Live playback/barge-in handling without coupling it to council cancellation.
 
 These changes improve the current product without changing who holds decision authority.
 

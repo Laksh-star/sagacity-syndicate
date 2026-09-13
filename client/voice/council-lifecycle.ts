@@ -29,6 +29,11 @@ export class VoiceCouncilLifecycle {
     return this.verified ? { revision: { ...this.verified.revision }, scroll: this.verified.scroll } : undefined;
   }
 
+  restoreVerifiedResult(revision: CouncilRevision, scroll: DecisionScroll): void {
+    if (this.active) return;
+    this.verified = { revision: { ...revision }, scroll };
+  }
+
   isCausalTurn(turnId: string): boolean {
     return this.active?.causalTurnId === turnId;
   }

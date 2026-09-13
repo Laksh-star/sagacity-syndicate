@@ -39,4 +39,14 @@ describe("VoiceCouncilLifecycle", () => {
     expect(lifecycle.bindDelegation("item_late", "turn_change")).toBe(true);
     expect(lifecycle.activeRound()).toMatchObject({ delegationId: "item_late", causalTurnId: "turn_change" });
   });
+
+  it("restores a verified result without creating an active round", () => {
+    const lifecycle = new VoiceCouncilLifecycle();
+    lifecycle.restoreVerifiedResult({ conversationRevision: 4, deliberationRevision: 2 }, scroll);
+    expect(lifecycle.activeRound()).toBeUndefined();
+    expect(lifecycle.verifiedResult()).toEqual({
+      revision: { conversationRevision: 4, deliberationRevision: 2 },
+      scroll,
+    });
+  });
 });

@@ -9,6 +9,7 @@ import { assessVoiceInterruption, assessVoiceReadiness, interruptDeliberation, r
 import { AgentCard } from "./components/AgentCard";
 import { DecisionScroll } from "./components/DecisionScroll";
 import { VoiceControl } from "./components/VoiceControl";
+import { clearPersistedDecision, loadPersistedDecision, persistDecision, restoredDecisionContext } from "./persisted-decision";
 import { VoiceCouncilLifecycle, type CouncilRevision } from "./voice/council-lifecycle";
 import { LiveAppendTracker, type LiveAppendKind } from "./voice/append-tracker";
 import { InitialHandoffGate, VoiceDelegationCoordinator } from "./voice/delegation-coordinator";
@@ -33,13 +34,16 @@ const emptyCopy: Record<VoiceIntakeStage, { title: string; description: string }
 };
 
 export default function App() {
+  const [restored] = useState(() => loadPersistedDecision());
   const [context, setContext] = useState("");
   const [constraint, setConstraint] = useState("");
-  const [phase, setPhase] = useState<CouncilPhase>("idle");
-  const [productMode, setProductMode] = useState<ProductMode>("conversation");
-  const [agentStates, setAgentStates] = useState(freshAgents);
-  const [scroll, setScroll] = useState<DecisionScrollType>();
-  const [roundMode, setRoundMode] = useState<string>();
+  const [phase, setPhase] = useState<CouncilPhase>(restored ? "completed" : "idle");
+  const [productMode, setProductMode] = useState<ProductMode>(restored ? "completed" : "conversation");
+  const [agentStates, setAgentStates] = useState<Record<AgentName, AgentCardState>>(
+    restored ? { forethought: "done", quickaction: "done", examiner: "done" } : freshAgents,
+  );
+  const [scroll, setScroll] = useState<DecisionScrollType | undefined>(restored?.scroll);
+  const [roundMode, setRoundMode] = useState<string | undefined>(restored?.roundMode);
   const [routeNote, setRouteNote] = useState<string>();
   const [changedFact, setChangedFact] = useState<string>();
   const [error, setError] = useState<string>();
@@ -50,9 +54,9 @@ export default function App() {
   const [transcriptAtLatest, setTranscriptAtLatest] = useState(true);
   const voice = useRef<LiveVoiceSession | undefined>(undefined);
   const lifecycle = useRef(new VoiceCouncilLifecycle());
-  const deliberationId = useRef<string | undefined>(undefined);
-  const conversationRevision = useRef(0);
-  const deliberationRevision = useRef(0);
+  const deliberationId = useRef<string | undefined>(restored?.deliberationId);
+  const conversationRevision = useRef(restored?.conversationRevision ?? 0);
+  const deliberationRevision = useRef(restored?.deliberationRevision ?? 0);
   const fetchAbort = useRef<AbortController | undefined>(undefined);
   const contextRef = useRef(context);
   const scrollRef = useRef(scroll);
@@ -68,6 +72,15 @@ export default function App() {
   const delegationCoordinator = useRef(new VoiceDelegationCoordinator());
   const appendTracker = useRef(new LiveAppendTracker());
   const transcriptElement = useRef<HTMLDivElement | null>(null);
+  const restoredLifecycle = useRef(false);
+
+  if (restored && !restoredLifecycle.current) {
+    lifecycle.current.restoreVerifiedResult({
+      conversationRevision: restored.conversationRevision,
+      deliberationRevision: restored.deliberationRevision,
+    }, restored.scroll);
+    restoredLifecycle.current = true;
+  }
 
   useEffect(() => { contextRef.current = context; }, [context]);
   useEffect(() => { scrollRef.current = scroll; }, [scroll]);
@@ -115,7 +128,7 @@ export default function App() {
       contextRef.current,
       transcriptRef.current,
       options.delegation?.causalTurn,
-    );
+    ) || (scrollRef.current ? restoredDecisionContext(scrollRef.current) : "");
     if (!decisionContext) { setError("Describe the decision before convening the council."); return; }
 
     setError(undefined);
@@ -163,6 +176,12 @@ export default function App() {
         scrollRef.current = event.scroll;
         setScroll(event.scroll);
         setRoundMode(event.mode);
+        persistDecision({
+          deliberationId: deliberationId.current as string,
+          ...revision,
+          roundMode: event.mode,
+          scroll: event.scroll,
+        });
         setProductMode("completed");
         setPhase("completed");
         setVoiceIntakeStage("ready");
@@ -438,6 +457,43 @@ export default function App() {
     void runCouncil({ conversationChanged: false });
   };
 
+  const startNewDecision = () => {
+    fetchAbort.current?.abort();
+    fallbackTimers.current.forEach(clearTimeout);
+    fallbackTimers.current.clear();
+    voice.current?.close();
+    voice.current = undefined;
+    clearPersistedDecision();
+    lifecycle.current = new VoiceCouncilLifecycle();
+    deliberationId.current = undefined;
+    conversationRevision.current = 0;
+    deliberationRevision.current = 0;
+    contextRef.current = "";
+    scrollRef.current = undefined;
+    transcriptRef.current = [];
+    productModeRef.current = "conversation";
+    processedTurns.current.clear();
+    revisionedTurns.current.clear();
+    readinessTurns.current.clear();
+    initialHandoffGate.current = new InitialHandoffGate();
+    delegationCoordinator.current = new VoiceDelegationCoordinator();
+    appendTracker.current = new LiveAppendTracker();
+    activeDelegation.current = null;
+    setContext("");
+    setConstraint("");
+    setScroll(undefined);
+    setTranscript([]);
+    setPhase("idle");
+    setProductMode("conversation");
+    setAgentStates(freshAgents());
+    setRoundMode(undefined);
+    setRouteNote(undefined);
+    setChangedFact(undefined);
+    setError(undefined);
+    setVoiceStatus("offline");
+    setVoiceIntakeStage("ready");
+  };
+
   const visiblePhase = productMode === "reconvening"
     ? "reconvening"
     : productMode === "deliberating"
@@ -510,6 +566,7 @@ export default function App() {
         <DecisionScroll
           scroll={scroll}
           mode={productMode}
+          onStartNew={startNewDecision}
           emptyCopy={inputMode === "text"
             ? { title: "Ready for written context.", description: "Enter the decision, hard constraints, and time horizon, then choose Convene." }
             : emptyCopy[voiceIntakeStage]}

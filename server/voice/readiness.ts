@@ -22,6 +22,7 @@ export class VoiceReadinessAssessor {
         instructions: await loadPrompt("voice-readiness"),
         input: JSON.stringify(request),
         schema: VoiceReadinessAssessmentSchema,
+        metadata: { application: "sagacity-syndicate", stage: "voice_readiness" },
       });
       return VoiceReadinessAssessmentSchema.parse(run.output);
     } catch {

@@ -30,6 +30,7 @@ export class VoiceMaterialityAssessor {
         instructions: await loadPrompt("voice-materiality"),
         input: JSON.stringify(request),
         schema: VoiceInterruptionWireSchema,
+        metadata: { application: "sagacity-syndicate", stage: "voice_materiality" },
       });
       const wire = VoiceInterruptionWireSchema.parse(run.output);
       return VoiceInterruptionAssessmentSchema.parse({

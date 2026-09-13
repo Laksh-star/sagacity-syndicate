@@ -43,7 +43,7 @@ git diff --check
 Pass criteria:
 
 - TypeScript reports no errors.
-- All tests pass, including orchestration supersession, transcript aggregation, materiality, Voice Brief bounds, and stale-result suppression.
+- All tests pass, including orchestration supersession, transcript aggregation, materiality, Voice Brief bounds, stale-result suppression, provider telemetry, cancellation idempotency, status reconciliation, and persisted-result validation.
 - Vite produces the production bundle.
 - Git reports no whitespace errors.
 
@@ -253,6 +253,30 @@ Expected: round N produces `council.stale_result.discarded` and cannot update th
 Refresh the page while deliberation is active.
 
 Expected for this proof-of-concept: the browser session resets cleanly. No partial result is presented as authoritative.
+
+### F5 — Refresh after completion
+
+1. Complete a council round.
+2. Refresh the page.
+
+Expected:
+
+- The newest authoritative Scroll, round mode, and revision counters are restored.
+- Agent cards show done and product mode shows completed.
+- The raw transcript and original intake prompt are not restored.
+- Starting voice creates a new Live media session.
+- **Start a new decision** removes the stored result and returns the UI to an empty conversation state.
+
+### F6 — Agents API stream uncertainty
+
+With a mocked event stream, emit a provider session ID and then fail the connection.
+
+Expected:
+
+- The runtime retrieves provider session status before surfacing the error.
+- The failure log includes the bounded status and does not blindly duplicate the turn.
+- Cancellation events include stable idempotency keys.
+- Successful runs produce per-stage `agent.run` records and one aggregate `council.telemetry` record.
 
 ## 7. Evidence checklist
 

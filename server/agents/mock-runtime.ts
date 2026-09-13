@@ -12,20 +12,26 @@ const delay = (signal?: AbortSignal) => new Promise<void>((resolve, reject) => {
 export class MockAgentRuntime implements AgentRuntime {
   private sessions = new Map<string, string>();
 
-  async start<T>({ instructions, input, schema, signal }: { model: string; instructions: string; input: string; schema: z.ZodType<T>; signal?: AbortSignal }): Promise<AgentRun<T>> {
-    await delay(signal);
+  async start<T>({ instructions, input, schema, signal, onSessionId }: Parameters<AgentRuntime["start"]>[0]): Promise<AgentRun<T>> {
+    const startedAt = Date.now();
     const sessionId = crypto.randomUUID();
     this.sessions.set(sessionId, instructions);
-    return { sessionId, output: schema.parse(this.fixture(instructions, input)) as T };
+    onSessionId?.(sessionId);
+    await delay(signal);
+    return { sessionId, output: schema.parse(this.fixture(instructions, input)) as T, telemetry: { durationMs: Date.now() - startedAt, repaired: false } };
   }
 
-  async continue<T>({ sessionId, input, schema, signal }: { sessionId: string; input: string; schema: z.ZodType<T>; signal?: AbortSignal }): Promise<AgentRun<T>> {
+  async continue<T>({ sessionId, input, schema, signal, onSessionId }: Parameters<AgentRuntime["continue"]>[0]): Promise<AgentRun<T>> {
+    const startedAt = Date.now();
+    onSessionId?.(sessionId);
     await delay(signal);
     const instructions = this.sessions.get(sessionId) ?? "";
-    return { sessionId, output: schema.parse(this.fixture(instructions, input)) as T };
+    return { sessionId, output: schema.parse(this.fixture(instructions, input)) as T, telemetry: { durationMs: Date.now() - startedAt, repaired: false } };
   }
 
-  async cancel(_sessionId: string): Promise<void> {}
+  async cancel(_sessionId: string, _idempotencyKey?: string): Promise<void> {}
+
+  async status(sessionId: string) { return this.sessions.has(sessionId) ? "idle" as const : "unavailable" as const; }
 
   private fixture(instructions: string, input: string): unknown {
     const lower = instructions.toLowerCase();

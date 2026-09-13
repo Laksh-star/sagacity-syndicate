@@ -80,6 +80,8 @@ Spoken delivery and the durable artifact are deliberately different:
 
 The transcript is a bounded, scrollable turn history. It follows new turns while the reader is at the bottom, preserves the reader's position after they scroll upward, and offers **Jump to latest**.
 
+The newest authoritative Decision Scroll and its revisions survive a page refresh in local browser storage; raw transcript and original intake text do not. **Start a new decision** removes the saved record and resets the local session.
+
 ## Architecture
 
 ```text
@@ -137,6 +139,8 @@ The Agents API receives JSON Schema output constraints and the server validates 
 ## Logging and privacy
 
 Each orchestration transition and bounded agent result is appended to `logs/deliberations.jsonl`. The client/server Live lifecycle writes bounded event metadata to `logs/live-events.jsonl`, including turn boundaries, delegation binding, revisions, phases, append acknowledgements, cancellation, and stale-result suppression. It does not log API keys, audio, raw deltas, or chain-of-thought. These files are ignored by git and may still contain bounded decision facts; delete or redact them before sharing an archive.
+
+Agents API runs additionally log stage and round latency, repair status, provider session IDs, and best-effort token usage. New provider sessions receive bounded trace metadata; cancellation events use stable idempotency keys. When an event stream fails after yielding a session ID, the runtime retrieves provider status before surfacing the uncertain failure rather than blindly retrying it.
 
 For a voice debugging pass, run `npm run dev`, reproduce the issue, then inspect the two JSONL files. Look for `live.readiness.assessed`, followed by either `live.delegation.created` or `live.delegation.fallback`, then `council.started`. Completion should be followed by thinking, instructions, and commentary send/ack events. An append acknowledgement confirms GPT-Live accepted context; it does not prove the audio was spoken. Browser microphone, WebRTC, account entitlement, and audible playback still require a real-account smoke test.
 

@@ -1,6 +1,6 @@
 import type { DecisionScroll as DecisionScrollType } from "../../shared/schemas";
 
-export function DecisionScroll({ scroll, mode, emptyCopy }: { scroll?: DecisionScrollType; mode: "conversation" | "deliberating" | "completed" | "reconvening"; emptyCopy?: { title: string; description: string } }) {
+export function DecisionScroll({ scroll, mode, emptyCopy, onStartNew }: { scroll?: DecisionScrollType; mode: "conversation" | "deliberating" | "completed" | "reconvening"; emptyCopy?: { title: string; description: string }; onStartNew?: () => void }) {
   if (!scroll) return <section className="scroll scroll--empty">
     <span className="eyebrow">Decision scroll</span>
     <h2>{mode === "deliberating" ? "A verified decision will appear here." : emptyCopy?.title ?? "Ready when you are."}</h2>
@@ -28,5 +28,6 @@ export function DecisionScroll({ scroll, mode, emptyCopy }: { scroll?: DecisionS
       <dl>{entries.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
     </details>
     {mode === "completed" && <p className="ask-hint">Ask Sutradhara “Why?”, about any council member, or what would change the decision.</p>}
+    {mode === "completed" && onStartNew && <button className="secondary" onClick={onStartNew}>Start a new decision</button>}
   </section>;
 }

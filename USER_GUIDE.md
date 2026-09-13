@@ -113,6 +113,8 @@ A useful prompt is specific without becoming an essay:
 
 After a completed text result, enter one changed fact in **What materially changed?** and select **Reconvene**.
 
+The latest completed Decision Scroll survives a page refresh. Select **Start a new decision** to delete that saved result, reset revisions and transcript state, and close the prior voice session.
+
 ## 6. Write a decision the council can use
 
 Include these when they matter:
@@ -282,6 +284,8 @@ See the [Architecture Guide](ARCHITECTURE.md) for the complete event and revisio
 - Raw transcript deltas are not logged.
 - Raw chain-of-thought is neither requested nor displayed.
 - Local logs can contain bounded decision facts and the final Decision Scroll.
+- Browser storage contains the latest authoritative Scroll, its council ID, round mode, and revisions. It does not contain the raw transcript or original decision prompt.
+- **Start a new decision** removes that browser-stored record.
 - Review, redact, or delete logs before sharing a repository archive or support bundle.
 
 ## 15. Current proof-of-concept limits

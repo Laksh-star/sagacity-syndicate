@@ -488,6 +488,10 @@ Two ignored local files support debugging:
 - `logs/deliberations.jsonl`: phases, agent states, bounded validated outputs, router results, errors, and final Scrolls.
 - `logs/live-events.jsonl`: session, turn, readiness, delegation, revision binding, append, interruption, cancellation, and stale-result events.
 
+Each successful Agents API call also writes an `agent.run` record with stage, optional specialist role, model, provider session ID, duration, repair status, and best-effort token usage. `council.telemetry` aggregates duration, call count, repair count, and usage for the round. New provider sessions carry bounded trace metadata containing the same council identifiers and revisions, never the decision text.
+
+If an Agents API event stream fails after its session ID is known, the runtime retrieves the provider session status before surfacing the error. It does not blindly retry uncertain work. Cancellation input events use stable idempotency keys; revision checking remains the final safety boundary.
+
 A healthy initial voice handoff normally contains:
 
 ```text
@@ -507,6 +511,8 @@ live.commentary.sent
 ```
 
 The application does not log API keys, microphone audio, raw transcript deltas, or private chain-of-thought. Logs can contain bounded decision facts and complete Scroll fields, so review or delete them before sharing a project archive.
+
+The browser persists only the latest authoritative Scroll, round mode, council ID, and revision counters. It does not persist raw voice turns or the original decision prompt. A refresh restores the completed result; **Start a new decision** deletes this record and closes the old Live session.
 
 ## 15. Configuration and model replacement
 
