@@ -80,7 +80,7 @@ Spoken delivery and the durable artifact are deliberately different:
 
 The transcript is a bounded, scrollable turn history. It follows new turns while the reader is at the bottom, preserves the reader's position after they scroll upward, and offers **Jump to latest**.
 
-The newest authoritative Decision Scroll and its revisions survive a page refresh in local browser storage; raw transcript and original intake text do not. **Start a new decision** removes the saved record and resets the local session.
+The newest authoritative Decision Scroll and its revisions survive a page refresh in local browser storage; raw transcript and original intake text do not. When voice reconnects after a refresh, the application immediately restores the verified Scroll as quiet GPT-Live context before accepting follow-up questions. **Start a new decision** removes the saved record and resets the local session.
 
 ## Architecture
 
@@ -104,7 +104,8 @@ Key boundaries:
 - `server/orchestration/` owns order, concurrency, cancellation, revisions, and selective reconvening.
 - `shared/schemas.ts` contains bounded Zod contracts for opinions, critiques, routing, events, and the final scroll.
 - `shared/voice.ts` maps a verified Scroll to bounded quiet context and a Voice Brief; it never creates a second decision.
-- `shared/voice-policy.ts` handles obvious non-material turns before using the bounded server-side materiality assessor.
+- `shared/voice-policy.ts` handles obvious non-material turns and high-confidence explicit changes such as deadlines, budgets, relocation limits, accepted offers, and removed options before using the bounded server-side materiality assessor.
+- Completed user turns are processed serially, so a later short utterance cannot overtake an earlier material change while classification is in flight.
 - `prompts/` keeps every role independently editable.
 
 ## Revisions and interruption

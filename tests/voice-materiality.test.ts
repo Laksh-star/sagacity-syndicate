@@ -20,4 +20,16 @@ describe("VoiceMaterialityAssessor", () => {
       changedConstraint: "My budget is actually ₹8 lakh instead of ₹20 lakh.",
     });
   });
+
+  it("treats an explicit shorter decision window as material", async () => {
+    await expect(assessor.assess({
+      utterance: "Actually I need to decide within five days, not a few weeks.",
+      currentContext: "A prior verified decision exists.",
+      phase: "completed",
+    })).resolves.toMatchObject({
+      material: true,
+      changedConstraint: "Actually I need to decide within five days, not a few weeks.",
+      confidence: 0.99,
+    });
+  });
 });

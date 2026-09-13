@@ -264,6 +264,8 @@ Expected:
 - The newest authoritative Scroll, round mode, and revision counters are restored.
 - Agent cards show done and product mode shows completed.
 - The raw transcript and original intake prompt are not restored.
+- Reconnect voice and verify Sutradhara can answer from the restored Scroll without asking for the original decision again.
+- Say “Actually I need to decide within five days, not a few weeks.” Verify it is treated as material, a newer revision starts, and a second short utterance cannot overtake its materiality assessment.
 - Starting voice creates a new Live media session.
 - **Start a new decision** removes the stored result and returns the UI to an empty conversation state.
 

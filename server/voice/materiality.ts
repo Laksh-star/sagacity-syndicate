@@ -3,7 +3,7 @@ import {
   type VoiceInterruptionAssessment,
   type VoiceInterruptionRequest,
 } from "../../shared/schemas.js";
-import { obviousNonMaterialAssessment } from "../../shared/voice-policy.js";
+import { obviousMaterialAssessment, obviousNonMaterialAssessment } from "../../shared/voice-policy.js";
 import type { AgentRuntime } from "../agents/runtime.js";
 import { loadPrompt } from "../prompts.js";
 import { z } from "zod";
@@ -22,7 +22,8 @@ export class VoiceMaterialityAssessor {
   constructor(private readonly runtime: AgentRuntime, private readonly model: string) {}
 
   async assess(request: VoiceInterruptionRequest): Promise<VoiceInterruptionAssessment> {
-    const obvious = obviousNonMaterialAssessment(request.utterance, Boolean(request.currentScroll));
+    const obvious = obviousNonMaterialAssessment(request.utterance, Boolean(request.currentScroll))
+      ?? obviousMaterialAssessment(request.utterance);
     if (obvious) return obvious;
     try {
       const run = await this.runtime.start({

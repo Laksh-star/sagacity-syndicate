@@ -4,7 +4,7 @@ import type {
   LiveDiagnosticEvent, VoiceInterruptionAssessment,
 } from "../shared/schemas";
 import { createCouncilThinkingContext, createVoiceBrief, createVoiceCommentary } from "../shared/voice";
-import { classifyLocalVoiceIntent, interruptionAction, obviousNonMaterialAssessment } from "../shared/voice-policy";
+import { classifyLocalVoiceIntent, interruptionAction, obviousMaterialAssessment, obviousNonMaterialAssessment } from "../shared/voice-policy";
 import { assessVoiceInterruption, assessVoiceReadiness, interruptDeliberation, recordLiveDiagnostic, streamDeliberation } from "./api";
 import { AgentCard } from "./components/AgentCard";
 import { DecisionScroll } from "./components/DecisionScroll";
@@ -15,6 +15,8 @@ import { LiveAppendTracker, type LiveAppendKind } from "./voice/append-tracker";
 import { InitialHandoffGate, VoiceDelegationCoordinator } from "./voice/delegation-coordinator";
 import { buildVoiceDecisionContext } from "./voice/decision-context";
 import { LiveVoiceSession, type LiveDelegation, type VoiceTurn } from "./voice/live-session";
+import { SerialTaskQueue } from "./voice/serial-task-queue";
+import { createLiveSessionBootstrap } from "./voice/session-bootstrap";
 import { isNearTranscriptEnd, scrollTranscriptToLatest } from "./voice/transcript-scroll";
 import "./styles.css";
 
@@ -72,6 +74,7 @@ export default function App() {
   const delegationCoordinator = useRef(new VoiceDelegationCoordinator());
   const appendTracker = useRef(new LiveAppendTracker());
   const transcriptElement = useRef<HTMLDivElement | null>(null);
+  const completedTurnQueue = useRef(new SerialTaskQueue());
   const restoredLifecycle = useRef(false);
 
   if (restored && !restoredLifecycle.current) {
@@ -344,7 +347,9 @@ export default function App() {
     diagnostic({ event: "live.interruption.received", delegationId: delegation?.id, detail: `characters=${turn.text.length}` });
     let assessment: VoiceInterruptionAssessment;
     try {
-      assessment = obviousNonMaterialAssessment(turn.text, hasDecision) ?? await assessVoiceInterruption({
+      assessment = obviousNonMaterialAssessment(turn.text, hasDecision)
+        ?? obviousMaterialAssessment(turn.text)
+        ?? await assessVoiceInterruption({
         utterance: turn.text,
         currentContext: contextRef.current || "Voice-provided decision context.",
         phase: active ? "deliberating" : "completed",
@@ -393,7 +398,10 @@ export default function App() {
     session.addEventListener("ready", () => {
       setVoiceStatus("ready");
       setVoiceIntakeStage("ready");
-      setAuthoritativeLiveStatus("NOT_STARTED", "The council is waiting. Converse naturally and ask only necessary clarification. Do not say the council is working until status becomes ACTIVE.");
+      const bootstrap = createLiveSessionBootstrap(scrollRef.current);
+      const verifiedRevision = lifecycle.current.verifiedResult()?.revision;
+      if (bootstrap.thinkingContext) appendLive(bootstrap.thinkingContext, null, "thinking", verifiedRevision);
+      setAuthoritativeLiveStatus(bootstrap.status, bootstrap.statusDetail, null, verifiedRevision);
     });
     session.addEventListener("closed", () => setVoiceStatus("offline"));
     session.addEventListener("talking", (event) => {
@@ -412,7 +420,11 @@ export default function App() {
     });
     session.addEventListener("turn.completed", (event) => {
       const turn = (event as CustomEvent<VoiceTurn>).detail;
-      if (turn.role === "user") void processCompletedUserTurn(turn);
+      if (turn.role === "user") {
+        void completedTurnQueue.current.enqueue(() => processCompletedUserTurn(turn)).catch((caught) => {
+          diagnostic({ event: "live.error", detail: (caught instanceof Error ? caught.message : "Completed voice turn processing failed.").slice(0, 500) });
+        });
+      }
     });
     session.addEventListener("delegation", (event) => {
       const delegation = (event as CustomEvent<LiveDelegation>).detail;
@@ -478,6 +490,7 @@ export default function App() {
     initialHandoffGate.current = new InitialHandoffGate();
     delegationCoordinator.current = new VoiceDelegationCoordinator();
     appendTracker.current = new LiveAppendTracker();
+    completedTurnQueue.current = new SerialTaskQueue();
     activeDelegation.current = null;
     setContext("");
     setConstraint("");

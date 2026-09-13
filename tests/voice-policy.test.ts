@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { classifyLocalVoiceIntent, interruptionAction, obviousNonMaterialAssessment } from "../shared/voice-policy.js";
+import { classifyLocalVoiceIntent, interruptionAction, obviousMaterialAssessment, obviousNonMaterialAssessment } from "../shared/voice-policy.js";
 
 describe("voice interruption policy", () => {
   it("does not invalidate a council for a conversational acknowledgement", () => {
@@ -20,6 +20,22 @@ describe("voice interruption policy", () => {
       reason: "The budget constraint changed.",
       confidence: 0.96,
     })).toBe("reconvene");
+  });
+
+  it("deterministically recognizes the post-refresh deadline correction from the live test", () => {
+    const assessment = obviousMaterialAssessment("Actually I need to decide within five days, not a few weeks.");
+    expect(assessment).toMatchObject({
+      material: true,
+      changedConstraint: "Actually I need to decide within five days, not a few weeks.",
+      confidence: 0.99,
+    });
+    expect(interruptionAction(assessment!)).toBe("reconvene");
+  });
+
+  it("deterministically recognizes other explicit high-impact constraints", () => {
+    expect(obviousMaterialAssessment("My budget is actually ₹8 lakh instead of ₹20 lakh.")?.material).toBe(true);
+    expect(obviousMaterialAssessment("I forgot to mention I cannot relocate.")?.material).toBe(true);
+    expect(obviousMaterialAssessment("Remove option B entirely.")?.material).toBe(true);
   });
 
   it("preserves work and asks for clarification when materiality is ambiguous", () => {

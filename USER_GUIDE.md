@@ -113,7 +113,7 @@ A useful prompt is specific without becoming an essay:
 
 After a completed text result, enter one changed fact in **What materially changed?** and select **Reconvene**.
 
-The latest completed Decision Scroll survives a page refresh. Select **Start a new decision** to delete that saved result, reset revisions and transcript state, and close the prior voice session.
+The latest completed Decision Scroll survives a page refresh. If you reconnect voice, Sutradhara receives the restored verified result quietly, so you can continue with “Why?” or state a changed constraint without restating the original decision. Select **Start a new decision** to delete that saved result, reset revisions and transcript state, and close the prior voice session.
 
 ## 6. Write a decision the council can use
 
