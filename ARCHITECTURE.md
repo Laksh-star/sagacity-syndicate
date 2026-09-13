@@ -550,4 +550,4 @@ Changing a model does not require changing orchestration code, but the replaceme
 - A successful build and automated test run do not validate microphone permission, actual Live delegation delivery, or audible playback.
 - The browser-to-GPT-Live portion must be smoke-tested with a permitted OpenAI project whenever Live protocol behavior or model configuration changes.
 
-For operational instructions, see the [User Guide](USER_GUIDE.md). For reproducible validation, see the [Test Plan](TEST_PLAN.md).
+For a capability-by-capability comparison, see the [OpenAI Feature Matrix](FEATURE_MATRIX.md). For operational instructions, see the [User Guide](USER_GUIDE.md). For reproducible validation, see the [Test Plan](TEST_PLAN.md).

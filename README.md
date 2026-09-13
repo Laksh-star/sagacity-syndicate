@@ -11,6 +11,7 @@ The agents analyze independently, cross-examine one another, and feed a bounded 
 ## Documentation
 
 - [Architecture Guide](ARCHITECTURE.md) — diagrams and implementation details for GPT-Live, client delegation, Agents API sessions, revision safety, and reconvening.
+- [OpenAI Feature Matrix](FEATURE_MATRIX.md) — what GPT-Live and Agents API capabilities are used, missing, appropriate, or deliberately deferred, with implementation paths.
 - [User Guide](USER_GUIDE.md) — practical voice and text workflows, result interpretation, follow-ups, privacy, and troubleshooting.
 - [Test Plan](TEST_PLAN.md) — automated, mock, live Agents API, and real GPT-Live validation.
 - [Implementation Note](IMPLEMENTATION_NOTE.md) — the original failure analysis and chosen fix.
