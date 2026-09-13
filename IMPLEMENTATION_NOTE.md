@@ -20,6 +20,8 @@ The server council keeps its revision-safe orchestration phases. The client adds
 
 The intake presentation also tracks `ready`, `listening`, `captured`, `clarifying`, and `preparing`. These states come from application events, not from Sutradhara's words. Voice mode automatically hands a ready decision to the council; text mode retains the explicit Convene action. Verified completion is returned through both Live channels even when a fallback round has no delegation ID, using the documented `delegation_id: null` session-context path.
 
+Only one initial handoff may be pending across the whole voice intake, not merely per transcript turn. This prevents two readiness calls completing out of order from starting overlapping fallback rounds. The server also converts any unexpectedly superseded active phase through `interrupted → ready` before starting the newer revision, so a provider or client race cannot create an `independent → independent` transition.
+
 ## Documentation checked
 
 - [GPT-Live overview](https://developers.openai.com/api/docs/guides/live)

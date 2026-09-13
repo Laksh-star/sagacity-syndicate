@@ -11,7 +11,7 @@ import { DecisionScroll } from "./components/DecisionScroll";
 import { VoiceControl } from "./components/VoiceControl";
 import { VoiceCouncilLifecycle, type CouncilRevision } from "./voice/council-lifecycle";
 import { LiveAppendTracker, type LiveAppendKind } from "./voice/append-tracker";
-import { VoiceDelegationCoordinator } from "./voice/delegation-coordinator";
+import { InitialHandoffGate, VoiceDelegationCoordinator } from "./voice/delegation-coordinator";
 import { buildVoiceDecisionContext } from "./voice/decision-context";
 import { LiveVoiceSession, type LiveDelegation, type VoiceTurn } from "./voice/live-session";
 import { isNearTranscriptEnd, scrollTranscriptToLatest } from "./voice/transcript-scroll";
@@ -64,6 +64,7 @@ export default function App() {
   const progressSent = useRef(false);
   const readinessTurns = useRef(new Set<string>());
   const fallbackTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  const initialHandoffGate = useRef(new InitialHandoffGate());
   const delegationCoordinator = useRef(new VoiceDelegationCoordinator());
   const appendTracker = useRef(new LiveAppendTracker());
   const transcriptElement = useRef<HTMLDivElement | null>(null);
@@ -233,12 +234,18 @@ export default function App() {
     const hasDecision = Boolean(scrollRef.current);
 
     if (!active && !hasDecision && delegation) {
+      const replacedTurn = initialHandoffGate.current.replace(turn.id);
+      if (replacedTurn && replacedTurn !== turn.id) {
+        fallbackTimers.current.forEach(clearTimeout);
+        fallbackTimers.current.clear();
+      }
       const claim = delegationCoordinator.current.claimNative(turn.id, delegation.id);
       const timer = fallbackTimers.current.get(turn.id);
       if (timer) clearTimeout(timer);
       fallbackTimers.current.delete(turn.id);
       if (claim === "start") {
         processedTurns.current.add(turn.id);
+        initialHandoffGate.current.clear(turn.id);
         await runCouncil({ delegation, conversationChanged: false });
       } else if (claim === "bind" && lifecycle.current.bindDelegation(delegation.id, turn.id)) {
         const bound = lifecycle.current.activeRound();
@@ -285,7 +292,12 @@ export default function App() {
       // Native delegation may have won while the bounded readiness request was
       // in flight. Its ACTIVE status must not be overwritten by a late
       // clarification result, and it must never be followed by a fallback.
-      if (delegationCoordinator.current.sourceFor(turn.id)) return;
+      if (
+        delegationCoordinator.current.sourceFor(turn.id)
+        || initialHandoffGate.current.isReservedForOther(turn.id)
+        || lifecycle.current.activeRound()
+        || scrollRef.current
+      ) return;
       diagnostic({ event: "live.readiness.assessed", detail: `${readiness.action}:${readiness.confidence}:${readiness.reason}`.slice(0, 500) });
       if (readiness.action === "clarify") {
         processedTurns.current.add(turn.id);
@@ -293,10 +305,13 @@ export default function App() {
         setAuthoritativeLiveStatus("CLARIFYING", `The council has not started. Ask one brief question about: ${readiness.missingInformation.join("; ")}.`);
         return;
       }
+      if (!initialHandoffGate.current.reserve(turn.id)) return;
       setVoiceIntakeStage("preparing");
       const timer = setTimeout(() => {
         fallbackTimers.current.delete(turn.id);
+        if (!initialHandoffGate.current.isCurrent(turn.id) || lifecycle.current.activeRound() || scrollRef.current) return;
         if (!delegationCoordinator.current.claimFallback(turn.id)) return;
+        initialHandoffGate.current.clear(turn.id);
         processedTurns.current.add(turn.id);
         diagnostic({ event: "live.delegation.fallback", detail: `causalTurn=${turn.id}; native delegation grace expired` });
         void runCouncil({ conversationChanged: false });
@@ -409,12 +424,14 @@ export default function App() {
   };
 
   const sendVoiceDecisionNow = () => {
+    if (lifecycle.current.activeRound() || scrollRef.current) return;
     const latest = [...transcriptRef.current].reverse().find((turn) => turn.role === "user" && turn.complete && turn.text.trim());
     if (!latest) { setError("Finish one spoken decision turn first."); return; }
     const timer = fallbackTimers.current.get(latest.id);
     if (timer) clearTimeout(timer);
     fallbackTimers.current.delete(latest.id);
     if (!delegationCoordinator.current.claimFallback(latest.id)) return;
+    initialHandoffGate.current.clear(latest.id);
     processedTurns.current.add(latest.id);
     setVoiceIntakeStage("preparing");
     diagnostic({ event: "live.delegation.fallback", detail: `causalTurn=${latest.id}; user requested immediate handoff` });

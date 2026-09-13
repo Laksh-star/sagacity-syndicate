@@ -91,4 +91,23 @@ describe("CouncilOrchestrator", () => {
     expect(newEvents.some((event) => event.type === "council.result")).toBe(true);
     expect(newEvents.some((event) => event.type === "council.error")).toBe(false);
   });
+
+  it("supersedes an overlapping newer revision without an illegal phase transition", async () => {
+    const council = new CouncilOrchestrator(new MockAgentRuntime(), { council: "mock", synthesis: "mock" }, silentLogger as never);
+    const oldEvents: CouncilEvent[] = [];
+    const newEvents: CouncilEvent[] = [];
+    const oldRound = council.deliberate({
+      deliberationId: "overlap", conversationRevision: 1, deliberationRevision: 1, context: "Should we proceed?",
+    }, (event) => oldEvents.push(event));
+    await new Promise((resolve) => setTimeout(resolve, 15));
+    const replacement = council.deliberate({
+      deliberationId: "overlap", conversationRevision: 2, deliberationRevision: 2, context: "Should we proceed with the same decision?",
+    }, (event) => newEvents.push(event));
+
+    await expect(oldRound).rejects.toBeDefined();
+    await expect(replacement).resolves.toHaveProperty("scroll");
+    expect(newEvents).not.toContainEqual(expect.objectContaining({ type: "council.error" }));
+    expect(newEvents.filter((event) => event.type === "council.phase").map((event) => event.type === "council.phase" && event.phase))
+      .toEqual(["ready", "independent", "cross_examining", "synthesizing", "completed"]);
+  });
 });

@@ -26,3 +26,32 @@ export class VoiceDelegationCoordinator {
     return this.starts.get(turnId);
   }
 }
+
+/** Allows only one unresolved initial council handoff across multiple turns. */
+export class InitialHandoffGate {
+  private pendingTurnId?: string;
+
+  reserve(turnId: string): boolean {
+    if (this.pendingTurnId && this.pendingTurnId !== turnId) return false;
+    this.pendingTurnId = turnId;
+    return true;
+  }
+
+  replace(turnId: string): string | undefined {
+    const previous = this.pendingTurnId;
+    this.pendingTurnId = turnId;
+    return previous;
+  }
+
+  isCurrent(turnId: string): boolean {
+    return this.pendingTurnId === turnId;
+  }
+
+  isReservedForOther(turnId: string): boolean {
+    return Boolean(this.pendingTurnId && this.pendingTurnId !== turnId);
+  }
+
+  clear(turnId: string): void {
+    if (this.pendingTurnId === turnId) this.pendingTurnId = undefined;
+  }
+}

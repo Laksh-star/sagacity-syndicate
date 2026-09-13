@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { LiveAppendTracker } from "../client/voice/append-tracker.js";
-import { VoiceDelegationCoordinator } from "../client/voice/delegation-coordinator.js";
+import { InitialHandoffGate, VoiceDelegationCoordinator } from "../client/voice/delegation-coordinator.js";
 import { LiveVoiceSession } from "../client/voice/live-session.js";
 import { isNearTranscriptEnd, scrollTranscriptToLatest } from "../client/voice/transcript-scroll.js";
 import { VoiceReadinessAssessmentSchema } from "../shared/schemas.js";
@@ -24,6 +24,21 @@ describe("voice council handoff", () => {
     const coordinator = new VoiceDelegationCoordinator();
     expect(coordinator.claimNative("turn_1", "item_1")).toBe("start");
     expect(coordinator.claimFallback("turn_1")).toBe(false);
+  });
+
+  it("allows only one pending initial fallback across completed voice turns", () => {
+    const gate = new InitialHandoffGate();
+    expect(gate.reserve("turn_1")).toBe(true);
+    expect(gate.reserve("turn_2")).toBe(false);
+    expect(gate.isCurrent("turn_1")).toBe(true);
+    expect(gate.isReservedForOther("turn_2")).toBe(true);
+  });
+
+  it("lets a native delegation replace an older pending fallback", () => {
+    const gate = new InitialHandoffGate();
+    gate.reserve("turn_1");
+    expect(gate.replace("turn_2")).toBe("turn_1");
+    expect(gate.isCurrent("turn_2")).toBe(true);
   });
 
   it("allows verified completion appends without a delegation ID", () => {

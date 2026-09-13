@@ -53,7 +53,13 @@ export class CouncilOrchestrator {
     const record = existing ?? {
       state: initialCouncilState(), abort: new AbortController(), sessions: {}, opinions: {}, critiques: {},
     };
-    if (existing) record.abort.abort("Superseded by a newer deliberation.");
+    if (existing) {
+      record.abort.abort("Superseded by a newer deliberation.");
+      if (["routing", "independent", "cross_examining", "synthesizing"].includes(record.state.phase)) {
+        record.state.phase = transition(record.state.phase, "interrupted");
+        record.state.agents = initialCouncilState().agents;
+      }
+    }
     const runAbort = new AbortController();
     record.abort = runAbort;
     record.state.conversationRevision = request.conversationRevision;
