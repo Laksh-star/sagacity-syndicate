@@ -8,7 +8,12 @@ A small Panchatantra-inspired AI Decision Council. GPT-Live-1 plays Sutradhara, 
 
 The agents analyze independently, cross-examine one another, and feed a bounded synthesis called the Decision Scroll. A separate Impact Router decides which perspectives must be rerun when a constraint changes.
 
-See the [User Guide](USER_GUIDE.md) for day-to-day use and the [Test Plan](TEST_PLAN.md) for automated, mock, live Agents API, and real GPT-Live validation.
+## Documentation
+
+- [Architecture Guide](ARCHITECTURE.md) — diagrams and implementation details for GPT-Live, client delegation, Agents API sessions, revision safety, and reconvening.
+- [User Guide](USER_GUIDE.md) — practical voice and text workflows, result interpretation, follow-ups, privacy, and troubleshooting.
+- [Test Plan](TEST_PLAN.md) — automated, mock, live Agents API, and real GPT-Live validation.
+- [Implementation Note](IMPLEMENTATION_NOTE.md) — the original failure analysis and chosen fix.
 
 ![Sagacity Syndicate showing a completed live Bangalore relocation decision](docs/assets/bangalore-decision-scroll.jpg)
 

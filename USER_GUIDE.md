@@ -2,9 +2,28 @@
 
 Sagacity Syndicate helps you examine a decision through three specialist perspectives while Sutradhara acts as the conversational moderator.
 
-The council provides advice, not authority. Treat its result as a structured decision aid and verify high-stakes legal, medical, financial, or employment claims independently.
+It is a decision aid, not an authority. Verify high-stakes legal, medical, financial, employment, or safety claims independently.
 
-## Start the application
+## 1. What happens when you use it
+
+```text
+You describe a decision
+  → Sutradhara clarifies only what is necessary
+  → the council analyzes independently
+  → the specialists challenge one another
+  → a synthesis becomes the Decision Scroll
+  → Sutradhara gives a short verbal briefing
+  → you can explore the result conversationally
+```
+
+The roles are:
+
+- **Forethought** examines future risks, prevention, scenarios, and second-order effects.
+- **Quickaction** proposes immediate, practical, adaptable, low-regret moves.
+- **Examiner** challenges assumptions, contradictions, and missing options.
+- **Sutradhara** clarifies, delegates, reports status, and explains verified results. Sutradhara is not a fourth decision-maker.
+
+## 2. Start the application
 
 You need Node.js 22.6 or later.
 
@@ -16,129 +35,261 @@ npm run dev
 
 Open [http://localhost:5173](http://localhost:5173).
 
-The default mock mode demonstrates the complete council flow without an OpenAI API key. For live Agents API and GPT-Live use, configure `.env` as described in the README. Keep that file local; never commit it.
+The default mock mode demonstrates the council flow without an OpenAI API key. To use GPT-Live and the Agents API, put your key and model settings in `.env` as described in the [README](README.md). Restart the development server after editing `.env`.
 
-## What the council does
+Keep `.env` local. Never commit, paste into chat, or place an API key in a screenshot.
 
-- **Forethought** examines future risks, prevention, scenarios, and second-order effects.
-- **Quickaction** proposes immediate, practical, adaptable, low-regret moves.
-- **Examiner** challenges assumptions, contradictions, and missing options.
-- **Sutradhara** clarifies, delegates, reports status, and explains the verified result. Sutradhara is not a fourth decision-maker.
+## 3. Choose one input mode
 
-Each council round follows this sequence:
+The two tabs at the top of the left panel select the input path.
 
-```text
-independent views → cross-examination → synthesis → Decision Scroll
-```
+| Mode | Use it when | What you must do |
+| --- | --- | --- |
+| **Speak with Sutradhara** | You want a natural conversation | Start voice, hold to speak, and release. No written Decision Context or Convene click is required. |
+| **Type decision** | You prefer a precise written prompt | Fill in Decision Context and select **Convene the council**. Voice is not required. |
 
-## Text-first use
+The paths converge on the same council. Voice is not a different or less rigorous decision engine; it is a conversational intake and explanation layer around the text-first orchestration.
 
-1. Enter the decision you are considering.
-2. Include the outcome you want, hard constraints, relevant options, and time horizon.
+## 4. Voice workflow
+
+### Start the session
+
+1. Select **Speak with Sutradhara**.
+2. Select **Start voice** and allow microphone access for the local site.
+3. Wait until the control says **Hold to speak** and **Sutradhara is ready**.
+4. Hold the control while speaking. Release when your utterance is complete.
+
+Speak naturally, but include the facts that change the decision:
+
+> I am considering moving to Bangalore for an AI-company role. I want stronger product experience, can spend up to ₹8 lakh, cannot move before January, and want to decide within six weeks.
+
+You do not need special commands such as “convene the council.” Sutradhara may ask one concise question if a decision, hard constraint, or useful outcome is genuinely missing.
+
+### Understand the handoff
+
+After a complete decision is captured, the app may briefly show **Preparing the council**. It is giving native GPT-Live delegation a short preference window. If that signal does not arrive, an application fallback starts the same council path automatically.
+
+**Send to council now** is an optional immediate override while preparation is pending. It is not a routine step.
+
+The authoritative sign that work started is the UI changing to **The council is deliberating**. Sutradhara saying “I’ll put that to the council” is conversational acknowledgement, not proof that the backend started.
+
+### While it works
+
+The cards show actual orchestration state:
+
+- **waiting** — this stage has not started for the specialist;
+- **thinking** — the specialist is producing an independent view;
+- **challenging** — the specialist is critiquing the other views;
+- **done** — the specialist completed the current required stage;
+- **error** — that specialist or stage failed.
+
+The council may take tens of seconds because it performs parallel independent analysis, one cross-examination round, and synthesis. Sutradhara gives at most one useful progress update rather than narrating every phase.
+
+You can say “Okay,” “What are they doing?” or “How long will this take?” without cancelling the council.
+
+### Receive the result
+
+On success:
+
+1. the complete Decision Scroll appears in the UI;
+2. the headline and confidence become prominent;
+3. the three compact specialist summaries show their main perspectives;
+4. Sutradhara gives a short executive briefing, normally around 20–40 seconds;
+5. **View full Decision Scroll** expands the complete artifact.
+
+Sutradhara should not read all seven Scroll fields aloud.
+
+## 5. Text workflow
+
+1. Select **Type decision**.
+2. Enter the decision, desired outcome, hard constraints, options, and time horizon.
 3. Select **Convene the council**.
-4. Watch the agent cards move through thinking, challenging, and done.
-5. Read the decision headline, confidence, and compact perspective summaries.
-6. Expand **View full Decision Scroll** for the complete result.
+4. Watch the headline and agent cards move through the real phases.
+5. Read the compact result, then expand **View full Decision Scroll** if desired.
 
-A useful decision prompt looks like this:
+A useful prompt is specific without becoming an essay:
 
 > Should I relocate for a new role? My objective is stronger AI product experience. I can spend up to ₹8 lakh, cannot move before January, and want to decide within six weeks.
 
-## Voice use
+After a completed text result, enter one changed fact in **What materially changed?** and select **Reconvene**.
 
-1. Use a normal browser with microphone permission enabled for the local site.
-2. Keep **Speak with Sutradhara** selected and choose **Start voice**.
-3. Hold the voice control while speaking, then release when finished.
-4. Answer only the clarification Sutradhara asks.
-5. The app automatically hands a ready decision to the council. You do not need to type in Decision Context or select Convene in voice mode.
-6. When the application actually starts the council, the UI changes to **The council is deliberating**. Sutradhara saying that it intends to delegate is not the status signal; the UI is authoritative.
-7. Wait for the full Decision Scroll to appear. Sutradhara will give a short executive briefing rather than reading the Scroll aloud.
+## 6. Write a decision the council can use
 
-The written details control in voice mode is optional and is intended for exact figures or spellings that are easier to type. The transcript displays complete conversational turns, not every streaming fragment. It is taller and scrollable, follows new turns while you are at the bottom, and shows **Jump to latest** if you scroll upward.
+Include these when they matter:
 
-If the app is briefly showing **Preparing the council**, it is giving native GPT-Live delegation a short preference window. If no native delegation arrives, the application starts the council itself. **Send to council now** is an optional immediate override, not a required step.
+- the actual choice or action under consideration;
+- what success means to you;
+- hard constraints such as budget, location, deadline, health, or commitments;
+- realistic options already available;
+- the time horizon;
+- what is known versus uncertain.
 
-To use the original text workflow, select **Type decision**, enter the Decision Context, and select **Convene the council**. Voice is not required in that mode.
+Avoid asking only “What should I do?” without context. Also avoid burying the decision in a long life history; begin with the choice, then add the facts that could change the recommendation.
 
-## While the council is deliberating
+## 7. Read the Decision Scroll
 
-You can say things such as:
+| Section | Meaning |
+| --- | --- |
+| **Decision** | The synthesized recommendation. |
+| **Rationale** | The principal reasons and the important disagreement or tradeoff. |
+| **Forethought** | The largest future risk and preventive consideration. |
+| **Quickaction** | The best immediate, low-regret move. |
+| **Examiner** | The most important hidden assumption, contradiction, or missing option. |
+| **Trigger to reconvene** | New evidence or a future condition that should reopen the decision. |
+| **Confidence** | Confidence in this bounded recommendation—not certainty or a probability that life will go as predicted. |
 
-- “Okay.”
-- “How long will this take?”
-- “What are they doing?”
+The full Decision Scroll is authoritative. The spoken Voice Brief is derived from it and intentionally shorter. If the spoken summary and screen ever appear inconsistent, rely on the newest completed Scroll and report the discrepancy as a bug.
 
-These conversational remarks do not cancel the council.
+## 8. Explore the completed decision by voice
 
-If you introduce a material change, such as a different budget or deadline, the app may reconvene:
-
-> My budget is actually ₹8 lakh, not ₹20 lakh.
-
-During reconvening, the previous verified Decision Scroll remains visible until the new synthesis becomes authoritative.
-
-## Explore a completed decision
-
-After completion, ask Sutradhara focused questions:
+Keep the voice session open and ask focused questions:
 
 - “Why?”
 - “What made Forethought cautious?”
+- “What did Quickaction recommend?”
 - “Why did Quickaction disagree?”
 - “What assumption did Examiner challenge?”
 - “Why is confidence only 72%?”
 - “When should I revisit this?”
 
-These questions use the existing verified council result and normally do not rerun the council.
+These questions use the stored, verified Scroll and normally do not run the council again. Sutradhara answers selectively from bounded council facts.
 
-A new fact that could change the recommendation does trigger reconvening:
+If you ask for the “full analysis,” Sutradhara should direct you to the visible Decision Scroll and summarize the requested sections rather than reading the whole artifact aloud.
 
-- “The budget has dropped by half.”
+## 9. Change a constraint and reconvene
+
+A material change is a fact that could alter the recommendation, reasoning, risk, or next move:
+
+- “My budget is actually ₹8 lakh, not ₹20 lakh.”
 - “I can no longer relocate.”
-- “The deadline is next week.”
-- “Remove option B.”
+- “The deadline is next week, not next month.”
+- “I already accepted another offer.”
+- “Remove option B entirely.”
 
-If the meaning is ambiguous, Sutradhara should ask one brief clarification while preserving the current result or active work.
+When you state a material change:
 
-## Reading the Decision Scroll
+1. the UI changes to **Reconvening council**;
+2. it shows what changed;
+3. the application marks the old in-flight round stale and requests cancellation if necessary;
+4. the Impact Router chooses a selective or full rerun;
+5. the previous verified Scroll remains visible;
+6. only a complete, current synthesis replaces it;
+7. Sutradhara gives a new concise briefing.
 
-- **Decision** is the synthesized recommendation.
-- **Rationale** explains the main evidence and disagreement.
-- **Forethought** identifies the largest future risk.
-- **Quickaction** gives the best immediate move.
-- **Examiner** identifies a hidden assumption or missing option.
-- **Trigger to reconvene** states what future evidence should reopen the decision.
-- **Confidence** expresses the council's confidence in the bounded recommendation, not a guarantee of correctness.
+If a statement is ambiguous—“That may not work”—the app preserves current work and asks one brief clarification rather than cancelling automatically.
 
-The full Decision Scroll is the authoritative artifact. The spoken Voice Brief is intentionally shorter and contains only the recommendation, main reason, key tension, immediate next step, and optional reconvening trigger.
+## 10. What the visible states mean
 
-## Troubleshooting
+| Visible state | Meaning | What you should do |
+| --- | --- | --- |
+| **Talking / Hold to speak** | Voice session is active; the council has not necessarily started | Describe the decision or answer Sutradhara |
+| **Clarifying** | More decision context is needed | Answer the one focused question |
+| **Preparing the council** | Readiness succeeded; native delegation/fallback coordination is in progress | Wait briefly; optional **Send to council now** can bypass the grace period |
+| **The council is deliberating** | Backend council work is active | Watch phases; ordinary interjections are safe |
+| **Synthesizing** | Independent and critique stages are complete | Wait for the verified Scroll |
+| **Completed** | A current, schema-validated Scroll is authoritative | Read it or ask follow-up questions |
+| **Reconvening council** | A material fact changed and a newer round is active | Keep using the old Scroll only as prior context until replacement completes |
+| **Failed / Error** | The current attempt did not complete | Read the error, inspect logs, and retry after fixing the cause |
+
+## 11. Transcript behavior
+
+The transcript shows turns, not raw recognition fragments:
+
+- **You** identifies completed or current user speech.
+- **Sutradhara** identifies moderator speech.
+- partial words update the current row instead of adding many rows;
+- history is bounded so it does not overpower the decision UI;
+- while you are at the bottom, it follows the latest turn;
+- if you scroll upward, it preserves your position and shows **Jump to latest**.
+
+Recognition can still make mistakes. Restate an important number or constraint clearly if the transcript is wrong. In voice mode, the optional written-details control can supply an exact figure, name, or spelling that is easier to type.
+
+## 12. Common situations
+
+### Sutradhara says it delegated, but the cards do not move
+
+Wait for **Preparing the council** to resolve. If no native handoff arrives, the automatic fallback should start the council. Use **Send to council now** only if you want to skip the remaining grace period.
+
+If the UI never changes to deliberating, check `logs/live-events.jsonl` for readiness, delegation, and start events. Do not keep repeating “convene the council,” because repeated voice turns may add noise without fixing the underlying connection or provider error.
 
 ### Voice remains on Connecting
 
-- Confirm microphone access for `localhost` or `127.0.0.1` in the browser.
-- Retry in current Chrome or Edge if an embedded browser does not expose microphone permission.
-- Confirm `OPENAI_API_KEY` and `OPENAI_LIVE_MODEL` are set in `.env`.
-- Check `/api/health`; `liveEnabled` should be `true`.
-
-The UI reports a microphone-permission timeout instead of waiting forever.
-
-### The council fails or stops
-
-- Check the visible error message first.
-- Inspect `logs/deliberations.jsonl` for council phases and bounded results.
-- Inspect `logs/live-events.jsonl` for voice turn, delegation, append, cancellation, or stale-result events.
+- Confirm microphone permission for `localhost` or `127.0.0.1`.
+- Try a current Chrome or Edge browser if an embedded browser does not expose microphone permission.
+- Confirm `OPENAI_API_KEY` and `OPENAI_LIVE_MODEL` in `.env`.
 - Restart `npm run dev` after changing environment variables.
+- Open `/api/health`; `liveEnabled` should be `true`.
 
-For the handoff path, `logs/live-events.jsonl` should show `live.readiness.assessed`, then either `live.delegation.created` or `live.delegation.fallback`, followed by `council.started`. If the UI says the council is deliberating, that state came from a real application event rather than from Sutradhara's speech.
+The client reports a microphone-permission timeout instead of waiting indefinitely.
 
-An append acknowledgement confirms GPT-Live accepted context; it does not prove that audio was audible.
+### Agent cards show Error
 
-### A result looks outdated
+- Read the visible error message.
+- Confirm `MOCK_COUNCIL=false` only when your OpenAI project has access and credits.
+- Verify `OPENAI_COUNCIL_MODEL` and `OPENAI_SYNTHESIS_MODEL`.
+- Inspect `logs/deliberations.jsonl` for the failing phase.
+- Try the text path to distinguish council/API trouble from GPT-Live trouble.
 
-Add the changed fact through voice or the **What materially changed?** field and reconvene. The revision model prevents an older late result from replacing or speaking over a newer round.
+### The council is taking longer than expected
 
-## Privacy
+Check whether the phase is still advancing. A round includes multiple provider sessions, so duration varies with model availability and network conditions. If the phase and logs stop changing, inspect the latest error or restart only after preserving any output you need.
+
+### The result looks outdated
+
+State the changed fact through voice or use **What materially changed?** in text mode. A newer revision must complete before it replaces the current Scroll. An old provider response cannot become authoritative.
+
+### Sutradhara does not speak after the Scroll appears
+
+The Scroll can succeed even if browser audio playback or a Live commentary event fails. Check:
+
+- system output volume and the browser tab's audio state;
+- whether the voice session is still connected;
+- `live.commentary.sent` and its acknowledgement in `logs/live-events.jsonl`;
+- browser console errors.
+
+An acknowledgement means GPT-Live accepted the event; it does not prove audible playback.
+
+## 13. Logs and debugging
+
+The app keeps local, git-ignored JSONL logs:
+
+- `logs/deliberations.jsonl` includes revisions, council phases, validated specialist outputs, router results, final Scrolls, and errors.
+- `logs/live-events.jsonl` includes bounded voice turn, readiness, delegation, append, interruption, cancellation, and stale-result events.
+
+For a healthy initial voice round, look for:
+
+```text
+live.session.started
+live.user_turn.completed
+live.readiness.assessed
+live.delegation.created OR live.delegation.fallback
+live.delegation.bound_to_revision
+council.started
+council.phase
+council.completed
+live.thinking.sent
+live.commentary.sent
+```
+
+For a material correction, look for `live.interruption.materiality`, `council.cancel.requested` when a round was active, a newer deliberation revision, and then a newer `council.completed`.
+
+See the [Architecture Guide](ARCHITECTURE.md) for the complete event and revision model and the [Test Plan](TEST_PLAN.md) for reproducible scenarios.
+
+## 14. Privacy and safe sharing
 
 - API keys stay on the server and `.env` is ignored by Git.
-- Audio is handled by the active GPT-Live session and is not written to local logs by this application.
-- Local JSONL logs may contain bounded decision facts. Review or delete them before sharing a project archive.
+- The application does not write microphone audio to local logs.
+- Raw transcript deltas are not logged.
 - Raw chain-of-thought is neither requested nor displayed.
+- Local logs can contain bounded decision facts and the final Decision Scroll.
+- Review, redact, or delete logs before sharing a repository archive or support bundle.
+
+## 15. Current proof-of-concept limits
+
+- One local user; no sign-in, database, or multi-device history.
+- Mock mode proves UI and orchestration mechanics, not OpenAI account access.
+- Speech recognition may mishear names, currencies, and numbers.
+- Automated tests cannot prove microphone permission, WebRTC connectivity, actual client delegation, or audible speech.
+- Model and protocol changes require a real-account browser smoke test.
+
+For the implementation design and diagrams, read the [Architecture Guide](ARCHITECTURE.md).
