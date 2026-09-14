@@ -124,6 +124,7 @@ export const LiveDiagnosticNameSchema = z.enum([
   "live.instructions.sent", "live.commentary.acknowledged", "live.thinking.acknowledged", "live.instructions.acknowledged", "live.interruption.received",
   "live.interruption.materiality", "council.cancel.requested", "council.stale_result.discarded",
   "live.session.closed", "live.error",
+  "live.playback.started", "live.playback.suppressed", "live.playback.resumed", "live.playback.stale_audio.discarded",
 ]);
 export type LiveDiagnosticName = z.infer<typeof LiveDiagnosticNameSchema>;
 

@@ -1,4 +1,5 @@
 import { VoiceTurnTracker, type DelegationBinding, type VoiceTurn } from "./turn-tracker.js";
+import { LivePlaybackController, type LivePlaybackState, type LivePlaybackTransition } from "./playback-controller.js";
 
 export type { VoiceTurn } from "./turn-tracker.js";
 
@@ -22,6 +23,7 @@ export class LiveVoiceSession extends EventTarget {
   private channel?: RTCDataChannel;
   private stream?: MediaStream;
   private output?: HTMLAudioElement;
+  private playback?: LivePlaybackController;
   private ready = false;
   private sessionId?: string;
   private readonly turns = new VoiceTurnTracker();
@@ -37,6 +39,7 @@ export class LiveVoiceSession extends EventTarget {
     this.peer = new RTCPeerConnection();
     this.output = new Audio();
     this.output.autoplay = true;
+    this.playback = new LivePlaybackController(this.output);
     this.peer.ontrack = (event) => { if (this.output) this.output.srcObject = event.streams[0]; };
     this.stream.getTracks().forEach((track) => this.peer?.addTrack(track, this.stream as MediaStream));
     this.channel = this.peer.createDataChannel("oai-events");
@@ -58,6 +61,7 @@ export class LiveVoiceSession extends EventTarget {
   setTalking(active: boolean): void {
     this.stream?.getAudioTracks().forEach((track) => { track.enabled = active; });
     if (active) {
+      this.emitPlayback(this.playback?.interrupt() ?? "none");
       this.clearUserSettle();
       this.completeUserTurn();
       const turn = this.turns.beginUserTurn();
@@ -102,6 +106,8 @@ export class LiveVoiceSession extends EventTarget {
     this.stream?.getTracks().forEach((track) => track.stop());
     this.channel?.close();
     this.peer?.close();
+    this.playback?.reset();
+    this.playback = undefined;
     this.peer = undefined;
     this.ready = false;
     this.dispatchEvent(new CustomEvent("diagnostic", { detail: { event: "live.session.closed", sessionId: this.sessionId } }));
@@ -120,6 +126,9 @@ export class LiveVoiceSession extends EventTarget {
       this.dispatchEvent(new CustomEvent("ready", { detail: event.session?.id }));
       this.dispatchEvent(new CustomEvent("diagnostic", { detail: { event: "live.session.started", sessionId: this.sessionId } }));
     } else if (event.type === "session.input_transcript.delta" || event.type === "session.output_transcript.delta") {
+      if (event.type === "session.output_transcript.delta") {
+        this.emitPlayback(this.playback?.acceptAssistantDelta(event.start_ms ?? 0) ?? "none");
+      }
       const mutation = this.turns.acceptDelta({
         role: event.type.includes("input") ? "user" : "sutradhara",
         text: event.delta ?? "",
@@ -177,6 +186,8 @@ export class LiveVoiceSession extends EventTarget {
     for (const delegation of pending) this.emitDelegation({ ...delegation, causalTurn: turn });
     this.dispatchEvent(new CustomEvent("turn.completed", { detail: turn }));
     if (turn.role === "user") {
+      this.playback?.completeUserTurn(turn.completedAt);
+      this.emitPlayback("none");
       this.dispatchEvent(new CustomEvent("diagnostic", { detail: {
         event: "live.user_turn.completed", sessionId: this.sessionId,
         detail: `turn=${turn.id}; characters=${turn.text.length}`,
@@ -217,7 +228,21 @@ export class LiveVoiceSession extends EventTarget {
     if (this.assistantSettleTimer) clearTimeout(this.assistantSettleTimer);
     this.assistantSettleTimer = undefined;
     const completed = this.turns.completeAssistantTurn();
-    if (completed) this.dispatchEvent(new CustomEvent("turn.completed", { detail: completed }));
+    if (completed) {
+      this.dispatchEvent(new CustomEvent("turn.completed", { detail: completed }));
+      this.emitPlayback(this.playback?.finishAssistantTurn() ?? "none");
+    }
+  }
+
+  private emitPlayback(transition: LivePlaybackTransition): void {
+    const state: LivePlaybackState = this.playback?.state() ?? "idle";
+    this.dispatchEvent(new CustomEvent("playback", { detail: { state, transition } }));
+    const event = transition === "started" ? "live.playback.started"
+      : transition === "suppressed" ? "live.playback.suppressed"
+        : transition === "resumed" ? "live.playback.resumed"
+          : transition === "stale_discarded" ? "live.playback.stale_audio.discarded"
+            : undefined;
+    if (event) this.dispatchEvent(new CustomEvent("diagnostic", { detail: { event, sessionId: this.sessionId } }));
   }
 
   private async waitForIce(): Promise<void> {

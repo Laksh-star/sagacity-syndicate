@@ -71,6 +71,8 @@ The delegation's `offset_ms` binds it to the user turn that caused it. That caus
 - confident changed constraints cancel/stale the active round and reconvene;
 - ambiguous statements preserve work and prompt one brief clarification.
 
+Push-to-talk also controls browser playback independently of council state. Pressing the control immediately suppresses Sutradhara audio, keeps it suppressed through the user turn, and resumes only when a post-turn Sutradhara response begins. Stopping speech never cancels council work by itself; only the completed-turn materiality path can invalidate a deliberation.
+
 Spoken delivery and the durable artifact are deliberately different:
 
 - **Decision Scroll** is the authoritative, complete, revision-checked UI result.
@@ -149,6 +151,8 @@ Each orchestration transition and bounded agent result is appended to `logs/deli
 Agents API runs additionally log stage and round latency, repair status, provider session IDs, and best-effort token usage. New provider sessions receive bounded trace metadata; cancellation events use stable idempotency keys. When an event stream fails after yielding a session ID, the runtime retrieves provider status before surfacing the uncertain failure rather than blindly retrying it.
 
 The expandable **Diagnostics** drawer shows the current product mode, orchestration phase, revisions, projected agent states, shortened council ID, and the newest bounded browser lifecycle events. It deliberately omits transcript text, agent reasoning, API keys, and raw provider payloads. The JSONL logs remain the source for deeper local debugging.
+
+Playback diagnostics include `live.playback.started`, `live.playback.suppressed`, `live.playback.resumed`, and `live.playback.stale_audio.discarded`. These describe browser control decisions, not proof of what a human actually heard.
 
 For a voice debugging pass, run `npm run dev`, reproduce the issue, then inspect the two JSONL files. Look for `live.readiness.assessed`, followed by either `live.delegation.created` or `live.delegation.fallback`, then `council.started`. Completion should be followed by thinking, instructions, and commentary send/ack events. An append acknowledgement confirms GPT-Live accepted context; it does not prove the audio was spoken. Browser microphone, WebRTC, account entitlement, and audible playback still require a real-account smoke test.
 

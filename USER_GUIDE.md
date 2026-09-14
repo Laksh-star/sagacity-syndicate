@@ -87,6 +87,8 @@ The council may take tens of seconds because it performs parallel independent an
 
 You can say “Okay,” “What are they doing?” or “How long will this take?” without cancelling the council.
 
+If Sutradhara is speaking when you press and hold, the browser pauses model audio immediately. The label beneath the control distinguishes **Sutradhara is speaking**, **Your turn · Sutradhara audio paused**, and **Waiting for Sutradhara**. The controller is designed to keep the interrupted tail suppressed and resume with the next post-turn Sutradhara response; this still needs the real microphone/audio acceptance test. Speech interruption does not cancel the council unless the completed statement contains a material change.
+
 ### Receive the result
 
 On success:

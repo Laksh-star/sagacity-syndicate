@@ -30,7 +30,7 @@ Priority uses **Now**, **Next**, **Later**, or **Avoid**. “Avoid” means the 
 | Streaming input and output transcripts | **Used** | Transcript deltas update one in-progress `VoiceTurn`; they are not treated as standalone turns. | Already present. | Preserve turn aggregation and bounded history. | Now |
 | Push-to-talk input control | **Used** | Holding enables the microphone track and sends unmute; release sends mute and starts turn finalization. | Already present. | This is the most predictable POC interaction model. | Now |
 | Automatic voice activity detection | **Not used** | The app deliberately uses push-to-talk boundaries. | **Yes.** Add a hands-free setting, configure the documented turn-detection mode, consume speech-started/stopped events, and retain the settle/revision tests. | Useful for accessibility and longer conversations, but only after live barge-in and false-endpoint tests. | Later |
-| Smooth conversational interruption / barge-in | **Partial** | The user can speak again; application-level materiality decides whether council work remains valid. Explicit output-playback control is not modeled. | **Yes.** Track current output/response events, stop or suppress playback on user speech where documented, and keep backend cancellation separate from audio interruption. | Useful, but must never equate “stop speaking” with “cancel the council.” | Next |
+| Smooth conversational interruption / barge-in | **Used** (live validation pending) | `LivePlaybackController` mutes browser model audio immediately on push-to-talk, keeps it suppressed through the user turn, rejects stale playback boundaries, and resumes on a post-turn Sutradhara response. | Implemented with automated coverage; still needs the real microphone/audio acceptance pass. | Playback suppression is deliberately separate from materiality and council cancellation. | Now |
 | Session instructions at creation | **Used** | `prompts/sutradhara.md` is loaded when the Live session is created. | Already present. | Keep moderator behavior separate from specialist prompts. | Now |
 | Runtime instruction updates | **Used** | `session.instructions.append` communicates authoritative `NOT_STARTED`, `CLARIFYING`, `ACTIVE`, `COMPLETED`, and `FAILED` state. | Already present. | Continue treating application state as authoritative. | Now |
 | Quiet context injection | **Used** | `session.thinking.append` receives bounded verified council facts for follow-up answers. | Already present. | Do not send raw agent output or private reasoning. | Now |
@@ -43,7 +43,7 @@ Priority uses **Now**, **Next**, **Later**, or **Avoid**. “Avoid” means the 
 | Live-managed tools / function calls | **Not used** | Sutradhara has no independent action tools. | **Yes, conditionally.** Register only narrow conversational utilities, add permissions and confirmation handling, and keep decision tools behind client delegation. | Avoid giving Sutradhara a second path to create decisions. A harmless UI-help tool could be appropriate later. | Later |
 | MCP tools in the Live layer | **Not used** | No MCP server is exposed to Sutradhara. | **Yes, conditionally.** Add a narrowly scoped MCP connection and explicit approval policy. | Better attached to evidence-gathering Agents API sessions than to the moderator unless the interaction is purely conversational. | Later |
 | Image or visual input | **Not used** | Voice intake is audio/text only. | **Yes.** Add an attachment control, validate file type/size, send visual input to the delegated backend, and return bounded findings to GPT-Live. | Useful for comparing offers, plans, or screenshots. Do not stuff raw images or long OCR into Live context. | Next |
-| Typed context during an active voice session | **Partial** | Exact written details can supplement voice context locally. | **Yes.** Make typed corrections emit one explicit completed application turn and pass a short factual update through thinking or commentary. | Useful for names, figures, and links; must share the same revision rules as speech. | Next |
+| Typed context during an active voice session | **Used** | A precise typed correction becomes one completed application-owned user turn, mirrors a bounded fact through `session.thinking.append`, and enters the same revision-safe reconvening path as speech. | Already present. | Useful for names, figures, and links; it shares the same revision rules as speech. | Now |
 | Configurable preset voice | **Used** | The Live session selects the `cedar` voice. | Already present. | A user preference can expose approved preset choices without changing decision behavior. | Later |
 | Custom voice | **Not used** | No custom voice asset or consent workflow exists. | **Conditional.** Add only if the account supports it and the product has appropriate voice-consent and disclosure UX. | Low value for validating the decision-council concept. | Later |
 | Server-side controls / sideband connection | **Not used** | Live commands travel from the browser data channel. | **Yes.** Open a trusted sideband session connection, route verified appends through the server, and correlate events there. | Could improve server-authoritative delivery and reconnect handling, but adds session lifecycle complexity. | Later |
@@ -81,7 +81,7 @@ Priority uses **Now**, **Next**, **Later**, or **Avoid**. “Avoid” means the 
 | Durable session artifacts | **Not used** | The Decision Scroll is an application artifact in UI/logs, not an Agents API file artifact. | **Yes.** Publish/download artifacts from hosted turns when agents create files. | Not needed for the Scroll; a local Markdown/PDF export is simpler. Useful if future agents produce spreadsheets or reports. | Later |
 | Vault IDs on sessions | **Not used** | No vaults are attached. | **Yes**, together with MCP/tool integration and a credential lifecycle. | Never add merely for convenience; it creates a new secret-management responsibility. | Later |
 | Required-action handling | **Not used** | Sessions currently have no tools and therefore no tool-result loop. | **Yes.** Pause the turn, validate the requested tool call, obtain approval when required, execute, and submit a structured tool-result event. | Mandatory before adding any custom or MCP tool. | Next with tools |
-| Persisted council history across app restarts | **Partial** | The newest authoritative Scroll and revision record persist locally; **Start a new decision** deletes them. Provider session IDs and raw intake history remain memory-only. | **Yes.** Multi-decision history would require an opt-in datastore, retention controls, and session reconciliation. | Latest-result recovery is complete; long-term history is deliberately deferred. | Later |
+| Bounded council history across app restarts | **Used** | The newest authoritative Scroll restores directly, while the ten newest verified Scroll revisions remain in local browser history for comparison and Markdown export. | Already present. Provider session IDs and raw intake remain deliberately memory-only. | This provides useful local continuity without creating a transcript or provider-history datastore. | Now |
 
 ## Recommended implementation order
 
@@ -97,7 +97,7 @@ Completed in the current repository:
 4. Bounded latest-Scroll and revision recovery across refresh.
 5. Provider metadata for application, stage, role, and revisions.
 
-The next reliability item is explicit Live playback/barge-in handling without coupling it to council cancellation.
+Explicit Live playback/barge-in handling is implemented with automated coverage. Real microphone-to-speaker interruption and recovery remains an acceptance-test gate rather than an inferred success.
 
 These changes improve the current product without changing who holds decision authority.
 
@@ -115,7 +115,7 @@ Tools must remain read-only initially. Any later side-effecting action needs an 
 
 1. Add optional hands-free VAD while retaining push-to-talk as a reliable fallback.
 2. Add approved preset voice selection.
-3. Let typed corrections during voice become explicit revisioned turns.
+3. Typed corrections during voice are implemented as explicit revisioned turns.
 4. Consider sideband server controls only if browser reconnect and delivery evidence justify the added complexity.
 
 ### 4. Features to defer deliberately

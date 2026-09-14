@@ -120,6 +120,12 @@ The browser persists two deliberately bounded artifact stores:
 
 Raw transcripts and original intake text are not added to either store. A typed correction submitted while Live is connected becomes one complete application-owned user turn and enters the existing `reconveneWithConstraint` path. This follows the client-delegation rule that the application updates a running backend task instead of creating duplicate work; a short factual summary may be mirrored to GPT-Live as quiet context.
 
+### Browser playback interruption
+
+`LivePlaybackController` owns only the browser model-audio element. On push-to-talk it mutes that element immediately, remains suppressed until the user turn completes, rejects assistant transcript timestamps that predate that completion boundary, and unmutes for the next post-turn Sutradhara response. It does not mutate council revisions or issue provider cancellation.
+
+This separation is intentional: Live microphone mute controls caller input, browser media controls what the user hears, and the materiality/revision layer controls whether delegated work remains valid. Tests can verify the controller and state transitions; actual speaker output still requires a real-account browser pass.
+
 ## 3. GPT-Live connection and turn lifecycle
 
 ### WebRTC session establishment

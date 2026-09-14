@@ -13,6 +13,7 @@ h1 em { color: #a74b2a; font-style: italic; font-weight: 500; }
 .eyebrow, .section-title span, label > span { text-transform: uppercase; letter-spacing: .14em; font-size: .7rem; font-weight: 600; color: #60766d; }
 .phase { padding: 7px 12px; border: 1px solid #9cac9f; border-radius: 999px; font-size: .72rem; text-transform: uppercase; letter-spacing: .1em; background: rgba(255,255,255,.38); }
 .phase--deliberating, .phase--reconvening { color: #fff8ec; background: #a74b2a; border-color: #a74b2a; }
+.phase--listening, .phase--sutradhara_speaking, .phase--interrupted { color: #fff8ec; background: #315e51; border-color: #315e51; }
 .council-status { margin-top: 22px; padding: 17px 20px; border-left: 4px solid #a74b2a; border-radius: 0 15px 15px 0; background: rgba(255,255,255,.5); }
 .council-status h2 { margin: 4px 0 2px; font: 600 1.8rem "Newsreader", serif; }.council-status p { margin: 0; color: #64756e; font-size: .82rem; }
 .workspace { display: grid; grid-template-columns: .9fr 1.35fr; gap: 22px; padding: 22px 0; }
@@ -27,6 +28,10 @@ h1 em { color: #a74b2a; font-style: italic; font-weight: 500; }
 .voice-button--active { background: #a74b2a; border-color: #db8869; transform: scale(.985); }
 .voice-button .mic { width: 38px; height: 38px; display: grid; place-items: center; color: #d78362; border: 1px solid currentColor; border-radius: 50%; margin-bottom: 6px; }
 .voice-button strong { font-size: 1.05rem; }.voice-button small { color: #b9c9c0; }
+.playback-status { display: flex; align-items: center; justify-content: center; gap: 7px; margin: 8px 0 0; color: #aebfb6; font-size: .7rem; }
+.playback-status i { width: 6px; height: 6px; border-radius: 50%; background: #80978e; }
+.playback-status--speaking { color: #f0d0b8; }.playback-status--speaking i { background: #d78362; animation: pulse 1.2s infinite; }
+.playback-status--suppressed i, .playback-status--awaiting_response i { background: #e4b985; }
 .section-title { display: flex; justify-content: space-between; align-items: center; margin: 22px 0 12px; }
 .section-title small { color: #8da198; font-size: .72rem; }
 .transcript { min-height: 230px; max-height: 310px; margin-top: 4px; padding-right: 8px; overflow-y: auto; overscroll-behavior: contain; scrollbar-color: #69877d #12362e; scrollbar-width: thin; border-bottom: 1px solid #42665c; }

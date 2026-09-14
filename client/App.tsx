@@ -18,6 +18,7 @@ import { LiveAppendTracker, type LiveAppendKind } from "./voice/append-tracker";
 import { InitialHandoffGate, VoiceDelegationCoordinator } from "./voice/delegation-coordinator";
 import { buildVoiceDecisionContext } from "./voice/decision-context";
 import { LiveVoiceSession, type LiveDelegation, type VoiceTurn } from "./voice/live-session";
+import type { LivePlaybackState } from "./voice/playback-controller";
 import { SerialTaskQueue } from "./voice/serial-task-queue";
 import { createLiveSessionBootstrap } from "./voice/session-bootstrap";
 import { isNearTranscriptEnd, scrollTranscriptToLatest } from "./voice/transcript-scroll";
@@ -54,6 +55,7 @@ export default function App() {
   const [changedFact, setChangedFact] = useState<string>();
   const [error, setError] = useState<string>();
   const [voiceStatus, setVoiceStatus] = useState<"offline" | "connecting" | "ready" | "talking">("offline");
+  const [playbackState, setPlaybackState] = useState<LivePlaybackState>("idle");
   const [inputMode, setInputMode] = useState<InputMode>("voice");
   const [voiceIntakeStage, setVoiceIntakeStage] = useState<VoiceIntakeStage>("ready");
   const [transcript, setTranscript] = useState<VoiceTurn[]>([]);
@@ -432,7 +434,7 @@ export default function App() {
       if (bootstrap.thinkingContext) appendLive(bootstrap.thinkingContext, null, "thinking", verifiedRevision);
       setAuthoritativeLiveStatus(bootstrap.status, bootstrap.statusDetail, null, verifiedRevision);
     });
-    session.addEventListener("closed", () => setVoiceStatus("offline"));
+    session.addEventListener("closed", () => { setVoiceStatus("offline"); setPlaybackState("idle"); });
     session.addEventListener("talking", (event) => {
       const talking = (event as CustomEvent<boolean>).detail;
       setVoiceStatus(talking ? "talking" : "ready");
@@ -446,6 +448,9 @@ export default function App() {
         transcriptRef.current = next;
         return next;
       });
+    });
+    session.addEventListener("playback", (event) => {
+      setPlaybackState((event as CustomEvent<{ state: LivePlaybackState }>).detail.state);
     });
     session.addEventListener("turn.completed", (event) => {
       const turn = (event as CustomEvent<VoiceTurn>).detail;
@@ -478,6 +483,7 @@ export default function App() {
     try { await session.connect(); } catch (caught) {
       diagnostic({ event: "live.error", detail: (caught instanceof Error ? caught.message : "Voice connection failed.").slice(0, 500) });
       setVoiceStatus("offline");
+      setPlaybackState("idle");
       setError(caught instanceof Error ? caught.message : "Voice connection failed.");
       session.close();
     }
@@ -533,6 +539,7 @@ export default function App() {
     setChangedFact(undefined);
     setError(undefined);
     setVoiceStatus("offline");
+    setPlaybackState("idle");
     setVoiceIntakeStage("ready");
     setDiagnostics([]);
   };
@@ -541,16 +548,20 @@ export default function App() {
     ? "reconvening"
     : productMode === "deliberating"
       ? phase === "synthesizing" ? "synthesizing" : "deliberating"
-      : productMode === "conversation" && voiceStatus === "talking"
-        ? "talking"
-        : productMode === "conversation" && voiceIntakeStage !== "ready"
+      : voiceStatus === "talking"
+        ? "listening"
+        : playbackState === "speaking"
+          ? "sutradhara_speaking"
+          : playbackState === "suppressed"
+            ? "interrupted"
+      : productMode === "conversation" && voiceIntakeStage !== "ready"
           ? voiceIntakeStage
           : productMode;
   const hasCompletedVoiceTurn = transcript.some((turn) => turn.role === "user" && turn.complete && turn.text.trim());
   return <main className={`mode-${productMode}`}>
     <header>
       <div><span className="eyebrow">A Panchatantra-inspired AI decision council</span><h1>Sagacity <em>Syndicate</em></h1></div>
-      <span className={`phase phase--${visiblePhase}`}>{visiblePhase}</span>
+      <span className={`phase phase--${visiblePhase}`}>{visiblePhase.replaceAll("_", " ")}</span>
     </header>
 
     {productMode === "deliberating" || productMode === "reconvening" ? <section className="council-status">
@@ -567,7 +578,7 @@ export default function App() {
         </div>
 
         {inputMode === "voice" ? <>
-          <VoiceControl status={voiceStatus} productMode={productMode} onConnect={connectVoice} onTalk={(active) => voice.current?.setTalking(active)} />
+          <VoiceControl status={voiceStatus} productMode={productMode} playbackState={playbackState} onConnect={connectVoice} onTalk={(active) => voice.current?.setTalking(active)} />
           <p className="mode-help">No written Decision Context is required. Speak naturally; a ready decision is sent to the council automatically.</p>
           <div
             className="transcript"
