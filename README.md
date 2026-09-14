@@ -83,6 +83,10 @@ The transcript is a bounded, scrollable turn history. It follows new turns while
 
 The newest authoritative Decision Scroll and its revisions survive a page refresh in local browser storage; raw transcript and original intake text do not. When voice reconnects after a refresh, the application immediately restores the verified Scroll as quiet GPT-Live context before accepting follow-up questions. If the server also restarted, a material change carries the prior Scroll into the Impact Router and performs one full council rebuild because provider sessions and specialist opinions are not persisted. **Start a new decision** removes the saved record and resets the local session.
 
+The browser also keeps a bounded history of the ten newest verified Scroll revisions. The **Decision workspace** can export any retained Scroll as Markdown and compares the initial and latest revision of the current decision field by field. Starting a new decision removes the current authoritative pointer but keeps this local history; **Clear older history** reduces it to the current Scroll. Neither store contains raw transcript, audio, or provider reasoning.
+
+When Live is connected, the correction field remains available. Submitting a **Precise typed correction** adds one completed user turn to the visible transcript and enters the same revision-safe reconvening path as a material spoken correction. It is not sent as a second independent council request.
+
 ## Architecture
 
 ```text
@@ -143,6 +147,8 @@ The Agents API receives JSON Schema output constraints and the server validates 
 Each orchestration transition and bounded agent result is appended to `logs/deliberations.jsonl`. The client/server Live lifecycle writes bounded event metadata to `logs/live-events.jsonl`, including turn boundaries, delegation binding, revisions, phases, append acknowledgements, cancellation, and stale-result suppression. It does not log API keys, audio, raw deltas, or chain-of-thought. These files are ignored by git and may still contain bounded decision facts; delete or redact them before sharing an archive.
 
 Agents API runs additionally log stage and round latency, repair status, provider session IDs, and best-effort token usage. New provider sessions receive bounded trace metadata; cancellation events use stable idempotency keys. When an event stream fails after yielding a session ID, the runtime retrieves provider status before surfacing the uncertain failure rather than blindly retrying it.
+
+The expandable **Diagnostics** drawer shows the current product mode, orchestration phase, revisions, projected agent states, shortened council ID, and the newest bounded browser lifecycle events. It deliberately omits transcript text, agent reasoning, API keys, and raw provider payloads. The JSONL logs remain the source for deeper local debugging.
 
 For a voice debugging pass, run `npm run dev`, reproduce the issue, then inspect the two JSONL files. Look for `live.readiness.assessed`, followed by either `live.delegation.created` or `live.delegation.fallback`, then `council.started`. Completion should be followed by thinking, instructions, and commentary send/ack events. An append acknowledgement confirms GPT-Live accepted context; it does not prove the audio was spoken. Browser microphone, WebRTC, account entitlement, and audible playback still require a real-account smoke test.
 

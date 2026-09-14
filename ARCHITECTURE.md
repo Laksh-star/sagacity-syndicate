@@ -111,6 +111,15 @@ The server creates the Live session with `delegation: { type: "client" }`. Under
 
 This is intentional. Spoken language is probabilistic; council state must be deterministic and inspectable.
 
+### Browser decision workspace
+
+The browser persists two deliberately bounded artifact stores:
+
+- one current authoritative Scroll plus its revision identity, used for refresh recovery;
+- the ten newest verified Scroll revisions, used for history, Markdown export, and initial-versus-latest comparison.
+
+Raw transcripts and original intake text are not added to either store. A typed correction submitted while Live is connected becomes one complete application-owned user turn and enters the existing `reconveneWithConstraint` path. This follows the client-delegation rule that the application updates a running backend task instead of creating duplicate work; a short factual summary may be mirrored to GPT-Live as quiet context.
+
 ## 3. GPT-Live connection and turn lifecycle
 
 ### WebRTC session establishment

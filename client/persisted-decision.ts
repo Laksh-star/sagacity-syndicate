@@ -2,6 +2,8 @@ import { z } from "zod";
 import { DecisionScrollSchema, type DecisionScroll } from "../shared/schemas.js";
 
 const STORAGE_KEY = "sagacity-syndicate.authoritative-decision.v1";
+const HISTORY_STORAGE_KEY = "sagacity-syndicate.decision-history.v1";
+export const DECISION_HISTORY_LIMIT = 10;
 
 const PersistedDecisionSchema = z.object({
   version: z.literal(1),
@@ -14,6 +16,13 @@ const PersistedDecisionSchema = z.object({
 }).strict();
 
 export type PersistedDecision = z.infer<typeof PersistedDecisionSchema>;
+
+const DecisionHistorySchema = z.object({
+  version: z.literal(1),
+  entries: z.array(PersistedDecisionSchema).max(DECISION_HISTORY_LIMIT),
+}).strict();
+
+export type DecisionHistoryEntry = PersistedDecision;
 
 type DecisionStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
@@ -44,6 +53,46 @@ export function persistDecision(decision: Omit<PersistedDecision, "version" | "s
   } catch {
     return false;
   }
+}
+
+export function loadDecisionHistory(storage = browserStorage()): DecisionHistoryEntry[] {
+  if (!storage) return [];
+  try {
+    const raw = storage.getItem(HISTORY_STORAGE_KEY);
+    if (!raw) {
+      const latest = loadPersistedDecision(storage);
+      return latest ? [latest] : [];
+    }
+    const parsed = DecisionHistorySchema.safeParse(JSON.parse(raw));
+    if (parsed.success) return parsed.data.entries;
+    storage.removeItem(HISTORY_STORAGE_KEY);
+  } catch {
+    try { storage.removeItem(HISTORY_STORAGE_KEY); } catch { /* Storage can be unavailable or blocked. */ }
+  }
+  return [];
+}
+
+export function recordDecisionHistory(
+  decision: Omit<PersistedDecision, "version" | "savedAt">,
+  storage = browserStorage(),
+): DecisionHistoryEntry[] {
+  if (!storage) return [];
+  try {
+    const entry = PersistedDecisionSchema.parse({ ...decision, version: 1, savedAt: new Date().toISOString() });
+    const key = `${entry.deliberationId}:${entry.deliberationRevision}`;
+    const entries = [
+      ...loadDecisionHistory(storage).filter((candidate) => `${candidate.deliberationId}:${candidate.deliberationRevision}` !== key),
+      entry,
+    ].slice(-DECISION_HISTORY_LIMIT);
+    storage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(DecisionHistorySchema.parse({ version: 1, entries })));
+    return entries;
+  } catch {
+    return loadDecisionHistory(storage);
+  }
+}
+
+export function clearDecisionHistory(storage = browserStorage()): void {
+  try { storage?.removeItem(HISTORY_STORAGE_KEY); } catch { /* Storage can be unavailable or blocked. */ }
 }
 
 export function clearPersistedDecision(storage = browserStorage()): void {

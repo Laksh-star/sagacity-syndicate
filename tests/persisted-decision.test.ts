@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clearPersistedDecision, loadPersistedDecision, persistDecision, reconveningDecisionContext, restoredDecisionContext } from "../client/persisted-decision.js";
+import { DECISION_HISTORY_LIMIT, clearDecisionHistory, clearPersistedDecision, loadDecisionHistory, loadPersistedDecision, persistDecision, recordDecisionHistory, reconveningDecisionContext, restoredDecisionContext } from "../client/persisted-decision.js";
 import { DecisionScrollSchema } from "../shared/schemas.js";
 
 const scroll = DecisionScrollSchema.parse({
@@ -71,5 +71,41 @@ describe("authoritative decision persistence", () => {
     }, storage);
     clearPersistedDecision(storage);
     expect(loadPersistedDecision(storage)).toBeUndefined();
+  });
+
+  it("retains a bounded, revision-deduplicated local decision history", () => {
+    const storage = new MemoryStorage();
+    for (let revision = 1; revision <= DECISION_HISTORY_LIMIT + 3; revision += 1) {
+      recordDecisionHistory({
+        deliberationId: "decision_1",
+        conversationRevision: revision,
+        deliberationRevision: revision,
+        roundMode: revision === 1 ? "initial" : "selective",
+        scroll: { ...scroll, decision: `Run pilot revision ${revision}.` },
+      }, storage);
+    }
+    recordDecisionHistory({
+      deliberationId: "decision_1",
+      conversationRevision: DECISION_HISTORY_LIMIT + 3,
+      deliberationRevision: DECISION_HISTORY_LIMIT + 3,
+      roundMode: "selective",
+      scroll: { ...scroll, decision: "Replace the latest revision." },
+    }, storage);
+
+    const history = loadDecisionHistory(storage);
+    expect(history).toHaveLength(DECISION_HISTORY_LIMIT);
+    expect(history[0]?.deliberationRevision).toBe(4);
+    expect(history.at(-1)?.scroll.decision).toBe("Replace the latest revision.");
+    expect(JSON.stringify(history)).not.toContain("transcript");
+  });
+
+  it("clears history independently of the current authoritative decision", () => {
+    const storage = new MemoryStorage();
+    persistDecision({ deliberationId: "decision_1", conversationRevision: 1, deliberationRevision: 1, roundMode: "initial", scroll }, storage);
+    recordDecisionHistory({ deliberationId: "decision_1", conversationRevision: 1, deliberationRevision: 1, roundMode: "initial", scroll }, storage);
+    clearDecisionHistory(storage);
+    expect(loadPersistedDecision(storage)?.scroll).toEqual(scroll);
+    // With no explicit history record, migration safely exposes the current Scroll.
+    expect(loadDecisionHistory(storage)).toHaveLength(1);
   });
 });

@@ -8,8 +8,11 @@ import { classifyLocalVoiceIntent, interruptionAction, obviousMaterialAssessment
 import { assessVoiceInterruption, assessVoiceReadiness, interruptDeliberation, recordLiveDiagnostic, streamDeliberation } from "./api";
 import { AgentCard } from "./components/AgentCard";
 import { DecisionScroll } from "./components/DecisionScroll";
+import { DecisionWorkspace } from "./components/DecisionWorkspace";
+import { DiagnosticsDrawer, type LocalDiagnostic } from "./components/DiagnosticsDrawer";
 import { VoiceControl } from "./components/VoiceControl";
-import { clearPersistedDecision, loadPersistedDecision, persistDecision, reconveningDecisionContext, restoredDecisionContext } from "./persisted-decision";
+import { createTypedCorrectionTurn } from "./decision-artifacts";
+import { clearDecisionHistory, clearPersistedDecision, loadDecisionHistory, loadPersistedDecision, persistDecision, recordDecisionHistory, reconveningDecisionContext, restoredDecisionContext, type DecisionHistoryEntry } from "./persisted-decision";
 import { VoiceCouncilLifecycle, type CouncilRevision } from "./voice/council-lifecycle";
 import { LiveAppendTracker, type LiveAppendKind } from "./voice/append-tracker";
 import { InitialHandoffGate, VoiceDelegationCoordinator } from "./voice/delegation-coordinator";
@@ -37,6 +40,7 @@ const emptyCopy: Record<VoiceIntakeStage, { title: string; description: string }
 
 export default function App() {
   const [restored] = useState(() => loadPersistedDecision());
+  const [decisionHistory, setDecisionHistory] = useState<DecisionHistoryEntry[]>(() => loadDecisionHistory());
   const [context, setContext] = useState("");
   const [constraint, setConstraint] = useState("");
   const [phase, setPhase] = useState<CouncilPhase>(restored ? "completed" : "idle");
@@ -54,6 +58,7 @@ export default function App() {
   const [voiceIntakeStage, setVoiceIntakeStage] = useState<VoiceIntakeStage>("ready");
   const [transcript, setTranscript] = useState<VoiceTurn[]>([]);
   const [transcriptAtLatest, setTranscriptAtLatest] = useState(true);
+  const [diagnostics, setDiagnostics] = useState<LocalDiagnostic[]>([]);
   const voice = useRef<LiveVoiceSession | undefined>(undefined);
   const lifecycle = useRef(new VoiceCouncilLifecycle());
   const deliberationId = useRef<string | undefined>(restored?.deliberationId);
@@ -99,7 +104,11 @@ export default function App() {
     scrollTranscriptToLatest(transcriptElement.current);
   }, [transcript, transcriptAtLatest]);
 
-  const diagnostic = (entry: LiveDiagnosticEvent) => recordLiveDiagnostic(entry);
+  const diagnostic = (entry: LiveDiagnosticEvent) => {
+    const local = { ...entry, at: new Date().toISOString() };
+    setDiagnostics((current) => [...current, local].slice(-40));
+    recordLiveDiagnostic(entry);
+  };
 
   const appendLive = (content: string, delegationId: string | null, kind: LiveAppendKind, revision?: CouncilRevision) => {
     if (!voice.current) return;
@@ -182,12 +191,14 @@ export default function App() {
         scrollRef.current = event.scroll;
         setScroll(event.scroll);
         setRoundMode(event.mode);
-        persistDecision({
+        const decisionRecord = {
           deliberationId: deliberationId.current as string,
           ...revision,
           roundMode: event.mode,
           scroll: event.scroll,
-        });
+        } as const;
+        persistDecision(decisionRecord);
+        setDecisionHistory(recordDecisionHistory(decisionRecord));
         setProductMode("completed");
         setPhase("completed");
         setVoiceIntakeStage("ready");
@@ -392,6 +403,21 @@ export default function App() {
     await reconveneWithConstraint(constraint);
   };
 
+  const submitTypedCorrection = async () => {
+    const changed = constraint.trim();
+    if (!changed) { setError("State the precise correction before reconvening."); return; }
+    const turn = createTypedCorrectionTurn(changed);
+    setTranscript((current) => {
+      const next = [...current, turn].slice(-20);
+      transcriptRef.current = next;
+      return next;
+    });
+    diagnostic({ event: "live.interruption.received", detail: `typed-correction; characters=${changed.length}` });
+    diagnostic({ event: "live.interruption.materiality", detail: "true:1:User explicitly submitted a typed material correction." });
+    if (voice.current) appendLive(`The user supplied this factual correction in the application: ${changed.slice(0, 400)}. The application is reconvening the council; do not answer from the prior result as if it were current.`, null, "thinking");
+    await reconveneWithConstraint(changed);
+  };
+
   const connectVoice = async () => {
     setInputMode("voice");
     setVoiceStatus("connecting");
@@ -508,6 +534,7 @@ export default function App() {
     setError(undefined);
     setVoiceStatus("offline");
     setVoiceIntakeStage("ready");
+    setDiagnostics([]);
   };
 
   const visiblePhase = productMode === "reconvening"
@@ -568,9 +595,10 @@ export default function App() {
           {!scroll && <button className="primary" onClick={() => void runCouncil()} disabled={activePhases.includes(phase)}>Convene the council</button>}
         </>}
 
-        {scroll && inputMode === "text" && <div className="reconvene">
-          <label><span>What materially changed?</span><input value={constraint} onChange={(event) => setConstraint(event.target.value)} placeholder="Add or revise one material constraint" /></label>
-          <button className="primary" onClick={() => void manualReconvene()}>Reconvene</button>
+        {(scroll || (voiceStatus !== "offline" && activePhases.includes(phase))) && <div className="reconvene">
+          <label><span>{voiceStatus === "offline" ? "What materially changed?" : "Precise typed correction"}</span><input value={constraint} onChange={(event) => setConstraint(event.target.value)} placeholder="Add or revise one material constraint" /></label>
+          <button className="primary" onClick={() => void (voiceStatus === "offline" ? manualReconvene() : submitTypedCorrection())}>Reconvene</button>
+          {voiceStatus !== "offline" && <small className="reconvene-help">This correction enters the voice transcript and safely starts a new council revision.</small>}
         </div>}
         {routeNote && <p className="route-note"><strong>Impact Router:</strong> {routeNote}</p>}
         {error && <p className="error" role="alert">{error}</p>}
@@ -587,8 +615,33 @@ export default function App() {
             ? { title: "Ready for written context.", description: "Enter the decision, hard constraints, and time horizon, then choose Convene." }
             : emptyCopy[voiceIntakeStage]}
         />
+        {scroll && productMode === "completed" && <DecisionWorkspace
+          entries={decisionHistory}
+          currentDeliberationId={deliberationId.current}
+          onClear={() => {
+            const current = [...decisionHistory].reverse().find((entry) => entry.deliberationId === deliberationId.current);
+            clearDecisionHistory();
+            setDecisionHistory(current ? recordDecisionHistory({
+              deliberationId: current.deliberationId,
+              conversationRevision: current.conversationRevision,
+              deliberationRevision: current.deliberationRevision,
+              roundMode: current.roundMode,
+              scroll: current.scroll,
+            }) : []);
+          }}
+        />}
       </div>
     </section>
+    <DiagnosticsDrawer
+      events={diagnostics}
+      phase={phase}
+      productMode={productMode}
+      roundMode={roundMode}
+      conversationRevision={conversationRevision.current}
+      deliberationRevision={deliberationRevision.current}
+      deliberationId={deliberationId.current}
+      agentStates={agentStates}
+    />
     <footer><span>Advice, not authority · Logs stay local</span><span>Revisions {conversationRevision.current}/{deliberationRevision.current}</span></footer>
   </main>;
 }

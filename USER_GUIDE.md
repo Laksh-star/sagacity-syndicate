@@ -115,6 +115,17 @@ After a completed text result, enter one changed fact in **What materially chang
 
 The latest completed Decision Scroll survives a page refresh. If you reconnect voice, Sutradhara receives the restored verified result quietly, so you can continue with “Why?” or state a changed constraint without restating the original decision. Select **Start a new decision** to delete that saved result, reset revisions and transcript state, and close the prior voice session.
 
+### Save, export, and compare decisions
+
+After a result completes, the **Decision workspace** appears below the Scroll:
+
+- **Export current as Markdown** downloads the complete verified Scroll with its round type, revisions, timestamp, and confidence.
+- **Initial versus revised decision** compares every Scroll field after reconvening and labels exact changes.
+- **Local decision history** retains the ten newest verified revisions across decisions. Each entry can be exported independently.
+- **Clear older history** keeps the current Scroll and removes older retained entries.
+
+History is stored only in this browser. It contains bounded Decision Scroll artifacts and revision metadata—not the raw transcript, microphone audio, API keys, or private model reasoning. Clearing browser site data removes it.
+
 ## 6. Write a decision the council can use
 
 Include these when they matter:
@@ -206,6 +217,8 @@ The transcript shows turns, not raw recognition fragments:
 
 Recognition can still make mistakes. Restate an important number or constraint clearly if the transcript is wrong. In voice mode, the optional written-details control can supply an exact figure, name, or spelling that is easier to type.
 
+After a Scroll exists—or while the council is working—the **Precise typed correction** field is available even when voice remains connected. Use it for a factual change such as “The budget is ₹8 lakh, not ₹20 lakh.” Selecting **Reconvene** records one completed typed user turn and follows the same cancellation, revision, Impact Router, and stale-result safeguards as a spoken material change. Keep ordinary questions such as “Why?” in the voice conversation; they should not reconvene.
+
 ## 12. Common situations
 
 ### Sutradhara says it delegated, but the cards do not move
@@ -257,6 +270,8 @@ The app keeps local, git-ignored JSONL logs:
 
 - `logs/deliberations.jsonl` includes revisions, council phases, validated specialist outputs, router results, final Scrolls, and errors.
 - `logs/live-events.jsonl` includes bounded voice turn, readiness, delegation, append, interruption, cancellation, and stale-result events.
+
+Open the small **Diagnostics** drawer at the bottom of the dashboard for an immediate browser-session view of the current mode, phase, revisions, agent states, shortened council ID, and recent lifecycle event names. This view is intentionally metadata-only and resets with the page; use the local JSONL files for the durable debugging trail.
 
 For a healthy initial voice round, look for:
 
