@@ -115,8 +115,8 @@ This is intentional. Spoken language is probabilistic; council state must be det
 
 The browser persists two deliberately bounded artifact stores:
 
-- one current authoritative Scroll plus its revision identity, used for refresh recovery;
-- the ten newest verified Scroll revisions, used for history, Markdown export, and initial-versus-latest comparison.
+- one current authoritative Scroll, its bounded Council Map trace, and its revision identity, used for refresh recovery;
+- the ten newest verified Scroll revisions and available traces, used for history, map navigation, Markdown export, and initial-versus-latest comparison.
 
 Raw transcripts and original intake text are not added to either store. A typed correction submitted while Live is connected becomes one complete application-owned user turn and enters the existing `reconveneWithConstraint` path. This follows the client-delegation rule that the application updates a running backend task instead of creating duplicate work; a short factual summary may be mirrored to GPT-Live as quiet context.
 
@@ -420,6 +420,8 @@ flowchart LR
 
 The **Decision Scroll** contains the full recommendation, rationale, three specialist takeaways, reconvening trigger, and confidence. It is the authoritative artifact.
 
+The **Council Map** is not another decision source. After synthesis, the server deterministically projects the validated specialist opinions and critiques into a `CouncilTrace`: one opening recommendation, one critique revision, and the final surviving perspective per specialist, plus at most six directed critique edges. Observations, uncertainties, provider payloads, and chain-of-thought are excluded. The UI presents the trace as a light map by default and as a denser audit trail on request.
+
 The **Voice Brief** is deterministically derived from that verified Scroll. It carries only the recommendation, main reason, key tension, immediate next step, and optional trigger. GPT-Live receives facts and delivery instructions, then paraphrases naturally; the application does not prewrite a polished monologue.
 
 Channel use is deliberate:
@@ -491,7 +493,7 @@ tests/                            unit and orchestration lifecycle coverage
 | `POST /api/live/session` | Browser → server | Exchange browser SDP for a server-created GPT-Live WebRTC session |
 | `POST /api/voice/readiness-assessment` | Browser → server | Decide whether a completed intake needs clarification or can convene |
 | `POST /api/voice/interruption-assessment` | Browser → server | Classify a later completed turn as material, non-material, or ambiguous |
-| `POST /api/deliberations` | Browser → server | Stream council phases, agent states, router result, and final Scroll as JSON lines |
+| `POST /api/deliberations` | Browser → server | Stream council phases, agent states, router result, and the final Scroll plus bounded Council Map trace as JSON lines |
 | `POST /api/deliberations/:id/interrupt` | Browser → server | Request server and provider-side cancellation for superseded work |
 | `POST /api/live/events` | Browser → server | Store bounded Live lifecycle diagnostics locally |
 | Live data channel | Browser ↔ GPT-Live | Transcript deltas, delegation events, audio state, and context append events |
@@ -527,7 +529,7 @@ live.commentary.sent
 
 The application does not log API keys, microphone audio, raw transcript deltas, or private chain-of-thought. Logs can contain bounded decision facts and complete Scroll fields, so review or delete them before sharing a project archive.
 
-The browser persists only the latest authoritative Scroll, round mode, council ID, and revision counters. It does not persist raw voice turns or the original decision prompt. A refresh restores the completed result. When a new Live connection becomes ready, the application appends that verified result as bounded quiet context and marks the authoritative status `COMPLETED` before new follow-ups are handled. Completed user turns enter a serial processing queue so asynchronous materiality checks cannot finish out of conversational order.
+The browser persists only the latest authoritative Scroll, bounded Council Map trace, round mode, council ID, and revision counters. It does not persist raw voice turns, the original decision prompt, complete specialist opinions, or provider payloads. A refresh restores the completed result and its map. When a new Live connection becomes ready, the application appends that verified Scroll as bounded quiet context and marks the authoritative status `COMPLETED` before new follow-ups are handled. Completed user turns enter a serial processing queue so asynchronous materiality checks cannot finish out of conversational order.
 
 On reconvening, the client always combines the prior verified Scroll with the latest conversation and changed constraint. If the server has also restarted and no in-memory council record exists, it hydrates the prior Scroll from `previousScroll`, runs the Impact Router, and performs a full three-specialist rebuild. A Scroll alone cannot safely recreate provider session IDs or the specialists' bounded prior opinions, so the server does not pretend that a selective continuation is available. **Start a new decision** deletes the record and closes the old Live session.
 

@@ -11,6 +11,16 @@ const scroll = DecisionScrollSchema.parse({
   triggerToReconvene: "Reconvene after one week.",
   confidence: 0.76,
 });
+const trace = {
+  contributions: {
+    forethought: { agent: "forethought" as const, openedWith: "Protect the downside.", challenged: "Require an explicit stop condition.", survived: "Protect the downside." },
+    quickaction: { agent: "quickaction" as const, openedWith: "Start with one team.", challenged: "Set a measurable checkpoint.", survived: "Start with one team." },
+    examiner: { agent: "examiner" as const, openedWith: "Test the binary framing.", challenged: "Name the missing alternative.", survived: "The binary framing is untested." },
+  },
+  critiqueEdges: [
+    { critic: "examiner" as const, target: "quickaction" as const, challenge: "The pilot needs a clear success threshold.", severity: "medium" as const },
+  ],
+};
 
 class MemoryStorage {
   private value = new Map<string, string>();
@@ -28,6 +38,7 @@ describe("authoritative decision persistence", () => {
       deliberationRevision: 2,
       roundMode: "selective",
       scroll,
+      trace,
     }, storage)).toBe(true);
 
     expect(loadPersistedDecision(storage)).toMatchObject({
@@ -37,6 +48,7 @@ describe("authoritative decision persistence", () => {
       deliberationRevision: 2,
       roundMode: "selective",
       scroll,
+      trace,
     });
     expect(JSON.stringify(loadPersistedDecision(storage))).not.toContain("transcript");
   });

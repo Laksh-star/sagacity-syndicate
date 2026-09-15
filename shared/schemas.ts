@@ -63,6 +63,40 @@ export const DecisionScrollSchema = z.object({
 }).strict();
 export type DecisionScroll = z.infer<typeof DecisionScrollSchema>;
 
+export const CouncilContributionSchema = z.object({
+  agent: AgentNameSchema,
+  openedWith: complete(300),
+  challenged: complete(300),
+  survived: complete(300),
+}).strict();
+export type CouncilContribution = z.infer<typeof CouncilContributionSchema>;
+
+export const CouncilCritiqueEdgeSchema = z.object({
+  critic: AgentNameSchema,
+  target: AgentNameSchema,
+  challenge: complete(220),
+  severity: z.enum(["low", "medium", "high"]),
+}).strict().superRefine((edge, ctx) => {
+  if (edge.critic === edge.target) ctx.addIssue({ code: "custom", message: "A specialist cannot critique itself." });
+});
+export type CouncilCritiqueEdge = z.infer<typeof CouncilCritiqueEdgeSchema>;
+
+export const CouncilTraceSchema = z.object({
+  contributions: z.object({
+    forethought: CouncilContributionSchema,
+    quickaction: CouncilContributionSchema,
+    examiner: CouncilContributionSchema,
+  }).strict(),
+  critiqueEdges: z.array(CouncilCritiqueEdgeSchema).max(6),
+}).strict().superRefine((trace, ctx) => {
+  for (const agent of AgentNameSchema.options) {
+    if (trace.contributions[agent].agent !== agent) {
+      ctx.addIssue({ code: "custom", message: `Contribution key ${agent} must match its agent identity.` });
+    }
+  }
+});
+export type CouncilTrace = z.infer<typeof CouncilTraceSchema>;
+
 export const VoiceBriefSchema = z.object({
   recommendation: complete(280),
   why: complete(320),
@@ -161,7 +195,7 @@ export const CouncilEventSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("council.phase"), phase: CouncilPhaseSchema }),
   z.object({ type: z.literal("agent.state"), agent: AgentNameSchema, state: AgentCardStateSchema }),
   z.object({ type: z.literal("router.result"), route: ImpactRouteSchema }),
-  z.object({ type: z.literal("council.result"), scroll: DecisionScrollSchema, mode: z.enum(["initial", "selective", "full", "preserved"]) }),
+  z.object({ type: z.literal("council.result"), scroll: DecisionScrollSchema, trace: CouncilTraceSchema.optional(), mode: z.enum(["initial", "selective", "full", "preserved"]) }),
   z.object({ type: z.literal("council.error"), message: z.string().max(500) }),
   z.object({ type: z.literal("council.interrupted"), reason: z.string().max(500) }),
 ]);

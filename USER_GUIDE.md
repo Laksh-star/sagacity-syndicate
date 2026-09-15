@@ -155,6 +155,17 @@ Avoid asking only “What should I do?” without context. Also avoid burying th
 
 The full Decision Scroll is authoritative. The spoken Voice Brief is derived from it and intentionally shorter. If the spoken summary and screen ever appear inconsistent, rely on the newest completed Scroll and report the discrepancy as a bug.
 
+### Use the Council Map
+
+The completed Scroll now includes two complementary council views:
+
+- **Map** is the default. The turtle, hare, and owl represent Forethought, Quickaction, and Examiner. Arrows show the all-to-all challenge round and the ideas flowing into synthesis. Select a specialist to reveal only its opening recommendation, critique, and surviving contribution.
+- **Detailed trail** shows all three bounded contributions and the directed critique edges together for audit-oriented reading.
+
+If a decision has been reconvened, select **Revision 1**, **Revision 2**, and later revisions to inspect how the council changed. During active deliberation, the same map projects actual agent states and phase. During reconvening, the previous verified decision remains authoritative until the replacement synthesis completes.
+
+Older decisions saved before the Council Map was introduced still appear, but their detailed critique edges are marked as unavailable because the application did not retain them retroactively.
+
 ## 8. Explore the completed decision by voice
 
 Keep the voice session open and ask focused questions:

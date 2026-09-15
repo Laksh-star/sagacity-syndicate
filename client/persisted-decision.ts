@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { DecisionScrollSchema, type DecisionScroll } from "../shared/schemas.js";
+import { CouncilTraceSchema, DecisionScrollSchema, type DecisionScroll } from "../shared/schemas.js";
 
 const STORAGE_KEY = "sagacity-syndicate.authoritative-decision.v1";
 const HISTORY_STORAGE_KEY = "sagacity-syndicate.decision-history.v1";
@@ -13,6 +13,7 @@ const PersistedDecisionSchema = z.object({
   roundMode: z.enum(["initial", "selective", "full", "preserved"]),
   savedAt: z.string().datetime(),
   scroll: DecisionScrollSchema,
+  trace: CouncilTraceSchema.optional(),
 }).strict();
 
 export type PersistedDecision = z.infer<typeof PersistedDecisionSchema>;

@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import {
   AgentNameSchema,
   CritiqueSchema,
+  CouncilTraceSchema,
   DecisionScrollSchema,
   ImpactRouteSchema,
   SpecialistOpinionSchema,
@@ -10,6 +11,7 @@ import {
   type CouncilEvent,
   type CouncilPhase,
   type Critique,
+  type CouncilTrace,
   type DecisionScroll,
   type DeliberationRequest,
   type ImpactRoute,
@@ -31,6 +33,7 @@ type RecordState = {
   activeSessions: Set<string>;
   metrics: RunMetric[];
   scroll?: DecisionScroll;
+  trace?: CouncilTrace;
 };
 
 const agents = AgentNameSchema.options;
@@ -44,7 +47,7 @@ export class CouncilOrchestrator {
     private readonly logger = new JsonlLogger(),
   ) {}
 
-  async deliberate(request: DeliberationRequest, emit: Emit): Promise<{ deliberationId: string; scroll: DecisionScroll }> {
+  async deliberate(request: DeliberationRequest, emit: Emit): Promise<{ deliberationId: string; scroll: DecisionScroll; trace?: CouncilTrace }> {
     const id = request.deliberationId ?? crypto.randomUUID();
     const existing = this.records.get(id);
     if (existing && request.conversationRevision < existing.state.conversationRevision) {
@@ -99,9 +102,9 @@ export class CouncilOrchestrator {
         await this.log(id, record, "router.result", route);
         if (!route.material) {
           this.setPhase(id, record, "completed", emit);
-          emit({ type: "council.result", scroll: record.scroll, mode: "preserved" });
+          emit({ type: "council.result", scroll: record.scroll, trace: record.trace, mode: "preserved" });
           await this.logTelemetry(id, record, roundStartedAt);
-          return { deliberationId: id, scroll: record.scroll };
+          return { deliberationId: id, scroll: record.scroll, trace: record.trace };
         }
         selected = route.confidence < 0.65 ? [...agents] : route.affectedAgents;
         // A persisted Scroll can restore authoritative decision context after a
@@ -136,12 +139,14 @@ export class CouncilOrchestrator {
       this.setPhase(id, record, "synthesizing", emit);
       const scroll = await this.synthesize(id, request.context, record, runAbort.signal);
       this.assertCurrent(record, captured);
+      const trace = createCouncilTrace(record.opinions, record.critiques, scroll);
       record.scroll = scroll;
+      record.trace = trace;
       this.setPhase(id, record, "completed", emit);
-      emit({ type: "council.result", scroll, mode });
-      await this.log(id, record, "council.result", { mode, scroll });
+      emit({ type: "council.result", scroll, trace, mode });
+      await this.log(id, record, "council.result", { mode, scroll, trace });
       await this.logTelemetry(id, record, roundStartedAt);
-      return { deliberationId: id, scroll };
+      return { deliberationId: id, scroll, trace };
     } catch (error) {
       const current = record.state.conversationRevision === captured.conversationRevision
         && record.state.deliberationRevision === captured.deliberationRevision;
@@ -394,6 +399,40 @@ export class CouncilOrchestrator {
       data,
     });
   }
+}
+
+export function createCouncilTrace(
+  opinions: Partial<Record<AgentName, SpecialistOpinion>>,
+  critiques: Partial<Record<AgentName, Critique>>,
+  scroll: DecisionScroll,
+): CouncilTrace {
+  const survived: Record<AgentName, string> = {
+    forethought: scroll.forethought,
+    quickaction: scroll.quickaction,
+    examiner: scroll.examiner,
+  };
+  const contributions = Object.fromEntries(agents.map((agent) => {
+    const opinion = opinions[agent];
+    const critique = critiques[agent];
+    if (!opinion || !critique) throw new Error(`Council trace is missing ${agent} output.`);
+    return [agent, {
+      agent,
+      openedWith: opinion.recommendation,
+      challenged: critique.revisionAdvice,
+      survived: survived[agent],
+    }];
+  }));
+  const critiqueEdges = agents.flatMap((critic) => {
+    const critique = critiques[critic];
+    if (!critique) return [];
+    return critique.targetAgents.map((target) => ({
+      critic,
+      target,
+      challenge: critique.revisionAdvice,
+      severity: critique.severity,
+    }));
+  });
+  return CouncilTraceSchema.parse({ contributions, critiqueEdges });
 }
 
 export function cancellationIdempotencyKey(deliberationId: string, deliberationRevision: number, sessionId: string): string {

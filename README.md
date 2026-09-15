@@ -76,6 +76,7 @@ Push-to-talk also controls browser playback independently of council state. Pres
 Spoken delivery and the durable artifact are deliberately different:
 
 - **Decision Scroll** is the authoritative, complete, revision-checked UI result.
+- **Council Map** is a bounded presentation trace showing each specialist's opening recommendation, critique direction, and the perspective that survived synthesis. Its **Detailed trail** view retains the denser audit presentation.
 - **Voice Brief** is a deterministic, schema-bounded set of facts for roughly 20–40 seconds of natural paraphrase.
 - `session.thinking.append` receives compact verified council context for later questions.
 - `session.commentary.append` receives only the brief or concise process guidance intended to be spoken.
@@ -83,7 +84,7 @@ Spoken delivery and the durable artifact are deliberately different:
 
 The transcript is a bounded, scrollable turn history. It follows new turns while the reader is at the bottom, preserves the reader's position after they scroll upward, and offers **Jump to latest**.
 
-The newest authoritative Decision Scroll and its revisions survive a page refresh in local browser storage; raw transcript and original intake text do not. When voice reconnects after a refresh, the application immediately restores the verified Scroll as quiet GPT-Live context before accepting follow-up questions. If the server also restarted, a material change carries the prior Scroll into the Impact Router and performs one full council rebuild because provider sessions and specialist opinions are not persisted. **Start a new decision** removes the saved record and resets the local session.
+The newest authoritative Decision Scroll, its bounded Council Map trace, and its revisions survive a page refresh in local browser storage; raw transcript and original intake text do not. When voice reconnects after a refresh, the application immediately restores the verified Scroll as quiet GPT-Live context before accepting follow-up questions. If the server also restarted, a material change carries the prior Scroll into the Impact Router and performs one full council rebuild because provider sessions and complete specialist working state are not persisted. **Start a new decision** removes the saved record and resets the local session.
 
 The browser also keeps a bounded history of the ten newest verified Scroll revisions. The **Decision workspace** can export any retained Scroll as Markdown and compares the initial and latest revision of the current decision field by field. Starting a new decision removes the current authoritative pointer but keeps this local history; **Clear older history** reduces it to the current Scroll. Neither store contains raw transcript, audio, or provider reasoning.
 
@@ -139,6 +140,7 @@ The `routing` state appears only during reconvening. Agent-card states are proje
 - Critiques: critic, target agents, up to two agreements, 1–3 challenges, revision advice, and severity.
 - Impact route: materiality, unique affected-agent subset, preserved fields, reason, and confidence.
 - Decision Scroll: the seven required fields with explicit string limits and confidence from 0 to 1.
+- Council trace: three bounded contributions plus at most six directed critique edges; it excludes observations, uncertainties, raw payloads, and chain-of-thought.
 - Voice Brief: recommendation, reason, key tension, immediate next step, and optional reconvene trigger, with a 120-word hard ceiling.
 - Voice interruption assessment: materiality, optional normalized changed constraint, bounded reason, and confidence.
 

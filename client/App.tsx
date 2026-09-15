@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import type {
-  AgentCardState, AgentName, CouncilEvent, CouncilPhase, DecisionScroll as DecisionScrollType,
+  AgentCardState, AgentName, CouncilEvent, CouncilPhase, CouncilTrace, DecisionScroll as DecisionScrollType,
   LiveDiagnosticEvent, VoiceInterruptionAssessment,
 } from "../shared/schemas";
 import { createCouncilThinkingContext, createVoiceBrief, createVoiceCommentary } from "../shared/voice";
 import { classifyLocalVoiceIntent, interruptionAction, obviousMaterialAssessment, obviousNonMaterialAssessment } from "../shared/voice-policy";
 import { assessVoiceInterruption, assessVoiceReadiness, interruptDeliberation, recordLiveDiagnostic, streamDeliberation } from "./api";
 import { AgentCard } from "./components/AgentCard";
+import { CouncilMap } from "./components/CouncilMap";
 import { DecisionScroll } from "./components/DecisionScroll";
 import { DecisionWorkspace } from "./components/DecisionWorkspace";
 import { DiagnosticsDrawer, type LocalDiagnostic } from "./components/DiagnosticsDrawer";
@@ -50,6 +51,7 @@ export default function App() {
     restored ? { forethought: "done", quickaction: "done", examiner: "done" } : freshAgents,
   );
   const [scroll, setScroll] = useState<DecisionScrollType | undefined>(restored?.scroll);
+  const [councilTrace, setCouncilTrace] = useState<CouncilTrace | undefined>(restored?.trace);
   const [roundMode, setRoundMode] = useState<string | undefined>(restored?.roundMode);
   const [routeNote, setRouteNote] = useState<string>();
   const [changedFact, setChangedFact] = useState<string>();
@@ -69,6 +71,7 @@ export default function App() {
   const fetchAbort = useRef<AbortController | undefined>(undefined);
   const contextRef = useRef(context);
   const scrollRef = useRef(scroll);
+  const councilTraceRef = useRef(councilTrace);
   const transcriptRef = useRef(transcript);
   const productModeRef = useRef(productMode);
   const processedTurns = useRef(new Set<string>());
@@ -94,6 +97,7 @@ export default function App() {
 
   useEffect(() => { contextRef.current = context; }, [context]);
   useEffect(() => { scrollRef.current = scroll; }, [scroll]);
+  useEffect(() => { councilTraceRef.current = councilTrace; }, [councilTrace]);
   useEffect(() => { transcriptRef.current = transcript; }, [transcript]);
   useEffect(() => { productModeRef.current = productMode; }, [productMode]);
   useEffect(() => () => {
@@ -192,12 +196,16 @@ export default function App() {
         }
         scrollRef.current = event.scroll;
         setScroll(event.scroll);
+        const acceptedTrace = event.trace ?? councilTraceRef.current;
+        councilTraceRef.current = acceptedTrace;
+        setCouncilTrace(acceptedTrace);
         setRoundMode(event.mode);
         const decisionRecord = {
           deliberationId: deliberationId.current as string,
           ...revision,
           roundMode: event.mode,
           scroll: event.scroll,
+          trace: acceptedTrace,
         } as const;
         persistDecision(decisionRecord);
         setDecisionHistory(recordDecisionHistory(decisionRecord));
@@ -530,6 +538,7 @@ export default function App() {
     setContext("");
     setConstraint("");
     setScroll(undefined);
+    setCouncilTrace(undefined);
     setTranscript([]);
     setPhase("idle");
     setProductMode("conversation");
@@ -617,11 +626,32 @@ export default function App() {
 
       <div className="council-panel">
         <div className="section-title"><span>The council</span><small>{roundMode ? `${roundMode} round` : "three independent lenses"}</small></div>
-        <div className="agent-list">{names.map((agent) => <AgentCard key={agent} agent={agent} state={agentStates[agent]} />)}</div>
+        {productMode === "conversation" && !scroll && <div className="agent-list">{names.map((agent) => <AgentCard key={agent} agent={agent} state={agentStates[agent]} />)}</div>}
+        {!scroll && (productMode === "deliberating" || productMode === "reconvening") && <CouncilMap
+          entries={decisionHistory}
+          currentDeliberationId={deliberationId.current}
+          currentTrace={councilTrace}
+          mode={productMode}
+          phase={phase}
+          agentStates={agentStates}
+          deliberationRevision={deliberationRevision.current}
+          changedFact={changedFact}
+        />}
         <DecisionScroll
           scroll={scroll}
           mode={productMode}
           onStartNew={startNewDecision}
+          councilView={scroll ? <CouncilMap
+            entries={decisionHistory}
+            currentDeliberationId={deliberationId.current}
+            currentScroll={scroll}
+            currentTrace={councilTrace}
+            mode={productMode}
+            phase={phase}
+            agentStates={agentStates}
+            deliberationRevision={deliberationRevision.current}
+            changedFact={changedFact}
+          /> : undefined}
           emptyCopy={inputMode === "text"
             ? { title: "Ready for written context.", description: "Enter the decision, hard constraints, and time horizon, then choose Convene." }
             : emptyCopy[voiceIntakeStage]}
@@ -638,6 +668,7 @@ export default function App() {
               deliberationRevision: current.deliberationRevision,
               roundMode: current.roundMode,
               scroll: current.scroll,
+              trace: current.trace,
             }) : []);
           }}
         />}
