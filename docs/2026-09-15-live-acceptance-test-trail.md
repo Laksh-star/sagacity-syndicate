@@ -24,7 +24,7 @@ All log timestamps below are UTC. The local test time was UTC+05:30.
 | Markdown export | Available; download not independently observed | The completed UI exposed **Export current as Markdown**, but browser/log evidence does not establish that a file was downloaded in this run. |
 | Live stale-council collision | Not exercised | No late superseded council result occurred. Automated stale-result coverage passed. |
 
-Overall result: **accepted for the proof-of-concept**, with the content-calibration and live-evidence limitations noted below.
+Overall result: **accepted for the proof-of-concept with one minor voice-turn UX issue**, with the interaction, content-calibration, and live-evidence limitations noted below.
 
 ## Test scenario
 
@@ -203,6 +203,14 @@ The strongest part is Examiner's correction of the success metric: five paid sea
 
 One content caveat remains: **94% confidence is optimistic** because the price, actual access to 20 warm prospects, conversion history, and workshop delivery workload remain unknown. The decision is still useful because it recommends a reversible test, but a confidence range closer to moderate-high would better reflect those uncertainties.
 
+## Minor voice-turn UX issue
+
+The user reported that Sutradhara appeared to cut them off once during the early conversation. The event trail does not show assistant playback before the application finalized the opening turn: the 19-second user turn completed at `01:18:21.619`, and playback resumed 174 ms later. The later readiness and fallback work explains waiting after the turn, not the perceived cutoff.
+
+The more plausible application-level cause is the push-to-talk interaction boundary. The current control stops recording on pointer release, cancellation, or pointer exit. A small pointer drift outside the button can therefore end the turn before the user intends to release it. The short post-mute completion interval and immediate playback recovery can make that boundary feel abrupt.
+
+Status: **minor UX issue, not a council-lifecycle failure**. A follow-up should capture the pointer while held, end recording only on deliberate release or cancellation, and log the stop reason. This was not changed as part of the evidence-trail update.
+
 ## Automated verification
 
 Verified against commit `9b0eb3e` after the live run:
@@ -242,4 +250,4 @@ voice decision
 -> restored-result exploration after refresh
 ```
 
-Status: **accepted for the current proof-of-concept**. The next quality improvement should calibrate synthesis confidence against unresolved uncertainties; it is not a blocker for this acceptance.
+Status: **accepted for the current proof-of-concept with one minor voice-turn UX issue**. The next improvements should harden the push-to-talk boundary and calibrate synthesis confidence against unresolved uncertainties; neither is a blocker for this acceptance.
