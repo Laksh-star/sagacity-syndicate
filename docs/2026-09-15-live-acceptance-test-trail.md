@@ -41,7 +41,7 @@ The user later changed the budget to ₹80,000 using the typed correction path, 
 
 ### 1. Live intake and exactly-once handoff
 
-- Live session `live_u7_EOC5o8L6I9Wtsao0OSpid` started at `01:17:46.065`.
+- The Live session started at `01:17:46.065`; its identifier is redacted from the public report.
 - The initial user turn started at `01:18:02.526` and completed at `01:18:21.619` as one 198-character turn.
 - Readiness was assessed as `convene` with 0.99 confidence.
 - Native delegation did not arrive within the grace period, so the deterministic fallback fired at `01:18:36.755`.
@@ -131,7 +131,7 @@ Assessment: **passed**. The reduced budget materially tightened the initial spen
 
 At `01:23:27.698`, a 54-character completed voice turn changed weekly capacity from ten hours to five.
 
-- Native delegation ID: `item_EOCBLLkcqFcCDpfwnjoU8`
+- Native delegation ID: recorded locally; redacted from the public report
 - Materiality: true, confidence 0.99
 - Conversation revision: 10
 - Deliberation revision: 3
@@ -174,7 +174,7 @@ Confidence: **94%**.
 
 ### 7. Refresh continuity and stored-result exploration
 
-A second Live session, `live_u7_EOCEB4tUAezk8HeBOnrs2`, began at `01:26:25.066` after the completed result was restored. Revision 3 instructions and quiet council context were sent immediately and acknowledged.
+A second Live session began at `01:26:25.066` after the completed result was restored; its identifier is redacted from the public report. Revision 3 instructions and quiet council context were sent immediately and acknowledged.
 
 The user then asked, “What assumption did Examiner challenge?” The completed UI showed Sutradhara answering that Examiner challenged five seats as sufficient proof and identified delivery capacity as the binding constraint. The utterance was classified non-material at 0.99 confidence, and no fourth council round started.
 

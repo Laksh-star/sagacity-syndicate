@@ -141,9 +141,9 @@ Although speech recognition inserted the harmless phrase “one lot,” the repl
 
 Lifecycle evidence:
 
-- Live session: `live_u7_EOiMYp3oNQNuhYoGuJuZLJANHKaGSi7g`
+- Live session: recorded locally; identifier redacted from the public report
 - User turn: one 84-character completed turn
-- Native delegation: `item_EOiMjCsnPIKsSLBkTc3D6`
+- Native delegation: recorded locally; identifier redacted from the public report
 - Materiality: true, confidence 0.99
 - Conversation revision: 4
 - Deliberation revision: 4

@@ -29,7 +29,7 @@ The user asked whether a broad news portal remains worthwhile as AI agents incre
 
 - Live session began at `2026-09-13T12:55:35.854Z`.
 - Completed decision turn: `voice_turn_12`.
-- Native delegation ID: `item_ENe3pqLwCU1ULnQCY7hTl`.
+- Native delegation ID: recorded locally; redacted from the public report.
 - Council ID: `b73e19d5-1884-4ef5-a129-7294bc4ee6a7`.
 - Revisions: conversation `7`, deliberation `1`.
 - Council started at `12:57:25.869Z`.
