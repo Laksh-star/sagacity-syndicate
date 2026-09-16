@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { LiveAppendTracker } from "../client/voice/append-tracker.js";
 import { InitialHandoffGate, VoiceDelegationCoordinator } from "../client/voice/delegation-coordinator.js";
 import { LiveVoiceSession } from "../client/voice/live-session.js";
@@ -69,6 +69,46 @@ describe("voice council handoff", () => {
     expect(isNearTranscriptEnd(scrolledUp)).toBe(false);
     scrollTranscriptToLatest(scrolledUp);
     expect(scrolledUp.scrollTop).toBe(500);
+  });
+
+  it("waits for late transcript fragments after microphone mute acknowledgement", () => {
+    vi.useFakeTimers();
+    try {
+      const sent: Array<{ type: string; event_id?: string }> = [];
+      const session = new LiveVoiceSession();
+      Object.assign(session, {
+        ready: true,
+        stream: { getAudioTracks: () => [{ enabled: false }] },
+        channel: { readyState: "open", send: (value: string) => sent.push(JSON.parse(value)) },
+      });
+      const completed: string[] = [];
+      session.addEventListener("turn.completed", (event) => {
+        const turn = (event as CustomEvent<{ role: string; text: string }>).detail;
+        if (turn.role === "user") completed.push(turn.text);
+      });
+
+      session.setTalking(true);
+      (session as unknown as { handle: (event: object) => void }).handle({
+        type: "session.input_transcript.delta", delta: "My budget is ₹40,000, not ", start_ms: 0, end_ms: 700,
+      });
+      session.setTalking(false);
+      const mute = [...sent].reverse().find((event) => event.type === "session.input_audio.mute");
+      (session as unknown as { handle: (event: object) => void }).handle({
+        type: "session.input_audio.muted", client_event_id: mute?.event_id,
+      });
+
+      vi.advanceTimersByTime(800);
+      expect(completed).toEqual([]);
+      (session as unknown as { handle: (event: object) => void }).handle({
+        type: "session.input_transcript.delta", delta: "₹1 lakh.", start_ms: 700, end_ms: 900,
+      });
+      vi.advanceTimersByTime(999);
+      expect(completed).toEqual([]);
+      vi.advanceTimersByTime(1);
+      expect(completed).toEqual(["My budget is ₹40,000, not ₹1 lakh."]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

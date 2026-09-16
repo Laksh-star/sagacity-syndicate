@@ -18,6 +18,8 @@ type LiveEvent = {
   error?: { message?: string; client_event_id?: string };
 };
 
+const USER_TRANSCRIPT_SETTLE_MS = 1_000;
+
 export class LiveVoiceSession extends EventTarget {
   private peer?: RTCPeerConnection;
   private channel?: RTCDataChannel;
@@ -75,7 +77,7 @@ export class LiveVoiceSession extends EventTarget {
       const activeTurn = [...this.turns.list()].reverse().find((turn) => turn.role === "user" && !turn.complete);
       if (activeTurn) this.muteTurns.set(eventId, activeTurn.id);
       this.send({ type: "session.input_audio.mute", event_id: eventId });
-      this.scheduleUserCompletion(800);
+      this.scheduleUserCompletion(USER_TRANSCRIPT_SETTLE_MS);
     }
     this.dispatchEvent(new CustomEvent("talking", { detail: active }));
   }
@@ -137,7 +139,7 @@ export class LiveVoiceSession extends EventTarget {
       });
       for (const completed of mutation.completed) this.emitCompletedTurn(completed);
       this.emitTurn(mutation.updated);
-      if (mutation.updated.role === "user" && this.userSettleTimer) this.scheduleUserCompletion(250);
+      if (mutation.updated.role === "user" && this.userSettleTimer) this.scheduleUserCompletion(USER_TRANSCRIPT_SETTLE_MS);
       if (mutation.updated.role === "sutradhara") this.scheduleAssistantCompletion();
     } else if (event.type === "session.delegation.created" && event.delegation?.target === "client") {
       const binding = this.turns.bindDelegation(event.delegation.id, event.offset_ms ?? 0);
@@ -153,7 +155,7 @@ export class LiveVoiceSession extends EventTarget {
       if (turnId) {
         this.muteTurns.delete(event.client_event_id as string);
         const activeTurn = [...this.turns.list()].reverse().find((turn) => turn.role === "user" && !turn.complete);
-        if (activeTurn?.id === turnId) this.scheduleUserCompletion(250);
+        if (activeTurn?.id === turnId) this.scheduleUserCompletion(USER_TRANSCRIPT_SETTLE_MS);
       }
     } else if (event.type === "session.thinking.appended" || event.type === "session.commentary.appended" || event.type === "session.instructions.appended") {
       this.dispatchEvent(new CustomEvent("append.acknowledged", { detail: {
