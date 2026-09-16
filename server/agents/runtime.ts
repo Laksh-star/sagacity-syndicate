@@ -13,6 +13,7 @@ export type AgentUsage = {
 export type AgentRunTelemetry = {
   durationMs: number;
   repaired: boolean;
+  recovered?: boolean;
   usage?: AgentUsage;
 };
 
@@ -208,6 +209,14 @@ export class OpenAIAgentRuntime implements AgentRuntime {
     } catch (error) {
       if (!sessionId || options.signal?.aborted || error instanceof AgentOutputError || error instanceof AgentProviderError) throw error;
       const providerStatus = await this.status(sessionId);
+      if (providerStatus === "in_progress") {
+        try {
+          return await this.recoverCompletedTurn(sessionId, schema, options, text, usage);
+        } catch (recoveryError) {
+          if (options.signal?.aborted) throw recoveryError;
+          throw new AgentSessionStreamError(sessionId, await this.status(sessionId), recoveryError);
+        }
+      }
       throw new AgentSessionStreamError(sessionId, providerStatus, error);
     }
     if (!sessionId) throw new Error("Agent session did not return an ID.");
@@ -222,4 +231,86 @@ export class OpenAIAgentRuntime implements AgentRuntime {
       throw new AgentOutputError(sessionId, error instanceof Error ? error.message : "Invalid agent output.", text, usage);
     }
   }
+
+  private async recoverCompletedTurn<T>(
+    sessionId: string,
+    schema: z.ZodType<T>,
+    options: { startedAt: number; signal?: AbortSignal },
+    streamedText: string,
+    streamedUsage?: AgentUsage,
+  ): Promise<AgentRun<T>> {
+    const deadline = Date.now() + 30_000;
+    let sessionStatus: AgentSessionStatus = "in_progress";
+    while (Date.now() < deadline) {
+      options.signal?.throwIfAborted();
+      const session = await this.client.beta.agents.sessions.retrieve(sessionId, { timeout: 5_000, maxRetries: 0 });
+      sessionStatus = session.status;
+      if (sessionStatus === "idle") break;
+      if (sessionStatus === "failed") throw new Error(session.error ?? "Agent session failed during stream recovery.");
+      if (sessionStatus === "requires_action") throw new Error("Agent session unexpectedly requires an external action.");
+      await abortableDelay(500, options.signal);
+    }
+    if (sessionStatus !== "idle") throw new Error("Agent session did not finish within the stream-recovery window.");
+
+    const turns = await this.client.beta.agents.sessions.turns.list(
+      sessionId,
+      { order: "desc", limit: 1 },
+      { timeout: 5_000, maxRetries: 0 },
+    );
+    const turn = turns.data[0];
+    if (!turn || turn.status !== "completed") {
+      throw new Error(`Recovered agent turn is ${turn?.status ?? "unavailable"}.`);
+    }
+
+    let text = streamedText;
+    if (!text) {
+      const items = await this.client.beta.agents.sessions.items.list(
+        sessionId,
+        { order: "desc", limit: 100 },
+        { timeout: 5_000, maxRetries: 0 },
+      );
+      const message = items.data.find((item) => item.type === "message"
+        && item.turn_id === turn.id
+        && item.role === "assistant"
+        && item.phase === "final_answer"
+        && item.status === "completed");
+      if (message?.type === "message") {
+        text = message.content
+          .filter((part) => part.type === "output_text")
+          .map((part) => part.text)
+          .join("");
+      }
+    }
+    if (!text) throw new Error("Recovered agent turn has no final output text.");
+
+    try {
+      return {
+        sessionId,
+        output: parseJson(text, schema),
+        telemetry: {
+          durationMs: Date.now() - options.startedAt,
+          repaired: false,
+          recovered: true,
+          usage: usageFrom(turn.usage) ?? streamedUsage,
+        },
+      };
+    } catch (error) {
+      throw new AgentOutputError(
+        sessionId,
+        error instanceof Error ? error.message : "Invalid recovered agent output.",
+        text,
+        usageFrom(turn.usage) ?? streamedUsage,
+      );
+    }
+  }
+}
+
+function abortableDelay(milliseconds: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(resolve, milliseconds);
+    signal?.addEventListener("abort", () => {
+      clearTimeout(timer);
+      reject(new DOMException("Aborted", "AbortError"));
+    }, { once: true });
+  });
 }

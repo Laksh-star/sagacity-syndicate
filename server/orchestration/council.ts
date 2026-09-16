@@ -154,6 +154,12 @@ export class CouncilOrchestrator {
         if (current && record.state.phase !== "interrupted") this.setPhase(id, record, "interrupted", emit);
         emit({ type: "council.interrupted", reason: "A newer conversation constraint superseded this round." });
       } else if (current) {
+        runAbort.abort("A council provider run failed.");
+        const activeSessionIds = [...record.activeSessions];
+        await Promise.allSettled(activeSessionIds.map((sessionId) => this.runtime.cancel(
+          sessionId,
+          cancellationIdempotencyKey(id, record.state.deliberationRevision, sessionId),
+        )));
         for (const agent of agents) if (["thinking", "challenging"].includes(record.state.agents[agent])) this.setAgent(id, record, agent, "error", emit);
         this.setPhase(id, record, "failed", emit);
         const message = error instanceof Error ? error.message : "Council failed.";
@@ -362,6 +368,7 @@ export class CouncilOrchestrator {
       stage, role, model, sessionId: run.sessionId,
       durationMs: run.telemetry?.durationMs ?? 0,
       repaired: run.telemetry?.repaired ?? false,
+      recovered: run.telemetry?.recovered ?? false,
       usage: run.telemetry?.usage,
     };
     record.metrics.push(metric);
@@ -380,6 +387,7 @@ export class CouncilOrchestrator {
       durationMs: Date.now() - roundStartedAt,
       calls: record.metrics.length,
       repairedCalls: record.metrics.filter((metric) => metric.repaired).length,
+      recoveredCalls: record.metrics.filter((metric) => metric.recovered).length,
       usage,
     });
   }

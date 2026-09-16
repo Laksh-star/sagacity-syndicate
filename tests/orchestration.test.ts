@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { MockAgentRuntime } from "../server/agents/mock-runtime.js";
-import type { AgentRun, AgentRuntime } from "../server/agents/runtime.js";
+import { AgentSessionStreamError, type AgentRun, type AgentRuntime } from "../server/agents/runtime.js";
 import { cancellationIdempotencyKey, CouncilOrchestrator } from "../server/orchestration/council.js";
 import type { CouncilEvent } from "../shared/schemas.js";
 
@@ -206,5 +206,32 @@ describe("CouncilOrchestrator", () => {
     expect(cancellations).toHaveLength(3);
     expect(cancellations.every(({ key }) => key?.startsWith("sagacity-cancel-") && key.length <= 256)).toBe(true);
     expect(new Set(cancellations.map(({ key }) => key)).size).toBe(3);
+  });
+
+  it("cancels sibling provider sessions when one parallel agent irrecoverably fails", async () => {
+    const base = new MockAgentRuntime();
+    const cancellations: string[] = [];
+    const runtime: AgentRuntime = {
+      start: async <T>(args: Parameters<AgentRuntime["start"]>[0]): Promise<AgentRun<T>> => {
+        if (args.instructions.includes("Quickaction")) {
+          args.onSessionId?.("failed_quickaction");
+          await new Promise((resolve) => setTimeout(resolve, 5));
+          throw new AgentSessionStreamError("failed_quickaction", "failed", new Error("provider failed"));
+        }
+        return base.start(args) as Promise<AgentRun<T>>;
+      },
+      continue: (args) => base.continue(args),
+      cancel: async (sessionId) => { cancellations.push(sessionId); },
+    };
+    const events: CouncilEvent[] = [];
+    const council = new CouncilOrchestrator(runtime, { council: "mock", synthesis: "mock" }, silentLogger as never);
+
+    await expect(council.deliberate({
+      deliberationId: "provider-failure", conversationRevision: 1, deliberationRevision: 1, context: "Should we run a pilot?",
+    }, (event) => events.push(event))).rejects.toBeInstanceOf(AgentSessionStreamError);
+
+    expect(cancellations).toHaveLength(2);
+    expect(events).toContainEqual(expect.objectContaining({ type: "council.phase", phase: "failed" }));
+    expect(events.some((event) => event.type === "council.result")).toBe(false);
   });
 });
