@@ -5,7 +5,7 @@ import type {
 } from "../shared/schemas";
 import { createCouncilThinkingContext, createVoiceBrief, createVoiceCommentary } from "../shared/voice";
 import { classifyLocalVoiceIntent, interruptionAction, obviousMaterialAssessment, obviousNonMaterialAssessment } from "../shared/voice-policy";
-import { assessVoiceInterruption, assessVoiceReadiness, interruptDeliberation, recordLiveDiagnostic, streamDeliberation } from "./api";
+import { assessVoiceInterruption, assessVoiceReadiness, interruptDeliberation, recordLiveDiagnostic, recoverDecisionHistory, streamDeliberation } from "./api";
 import { AgentCard } from "./components/AgentCard";
 import { CouncilMap } from "./components/CouncilMap";
 import { DecisionScroll } from "./components/DecisionScroll";
@@ -64,6 +64,7 @@ export default function App() {
   const [transcript, setTranscript] = useState<VoiceTurn[]>([]);
   const [transcriptAtLatest, setTranscriptAtLatest] = useState(true);
   const [diagnostics, setDiagnostics] = useState<LocalDiagnostic[]>([]);
+  const [historyRecoveryStatus, setHistoryRecoveryStatus] = useState<"idle" | "recovering" | "empty">("idle");
   const voice = useRef<LiveVoiceSession | undefined>(undefined);
   const lifecycle = useRef(new VoiceCouncilLifecycle());
   const deliberationId = useRef<string | undefined>(restored?.deliberationId);
@@ -559,6 +560,63 @@ export default function App() {
     setDiagnostics([]);
   };
 
+  const openSavedDecision = (entry: DecisionHistoryEntry) => {
+    fetchAbort.current?.abort();
+    voice.current?.close();
+    voice.current = undefined;
+    lifecycle.current = new VoiceCouncilLifecycle();
+    lifecycle.current.restoreVerifiedResult({
+      conversationRevision: entry.conversationRevision,
+      deliberationRevision: entry.deliberationRevision,
+    }, entry.scroll);
+    deliberationId.current = entry.deliberationId;
+    conversationRevision.current = entry.conversationRevision;
+    deliberationRevision.current = entry.deliberationRevision;
+    scrollRef.current = entry.scroll;
+    councilTraceRef.current = entry.trace;
+    transcriptRef.current = [];
+    productModeRef.current = "completed";
+    persistDecision({
+      deliberationId: entry.deliberationId,
+      conversationRevision: entry.conversationRevision,
+      deliberationRevision: entry.deliberationRevision,
+      roundMode: entry.roundMode,
+      scroll: entry.scroll,
+      trace: entry.trace,
+    });
+    setContext("");
+    setConstraint("");
+    setScroll(entry.scroll);
+    setCouncilTrace(entry.trace);
+    setTranscript([]);
+    setPhase("completed");
+    setProductMode("completed");
+    setAgentStates({ forethought: "done", quickaction: "done", examiner: "done" });
+    setRoundMode(entry.roundMode);
+    setRouteNote(undefined);
+    setChangedFact(undefined);
+    setError(undefined);
+    setVoiceStatus("offline");
+    setPlaybackState("idle");
+    setVoiceIntakeStage("ready");
+    setDiagnostics([]);
+  };
+
+  const recoverHistoryFromLogs = async () => {
+    setHistoryRecoveryStatus("recovering");
+    setError(undefined);
+    try {
+      const recovered = await recoverDecisionHistory();
+      let entries: DecisionHistoryEntry[] = [];
+      for (const decision of recovered) entries = recordDecisionHistory(decision);
+      setDecisionHistory(entries);
+      setHistoryRecoveryStatus(entries.length ? "idle" : "empty");
+    } catch (caught) {
+      setHistoryRecoveryStatus("idle");
+      setError(caught instanceof Error ? caught.message : "Could not recover local decision history.");
+    }
+  };
+
   const visiblePhase = productMode === "reconvening"
     ? "reconvening"
     : productMode === "deliberating"
@@ -576,7 +634,10 @@ export default function App() {
   return <main className={`mode-${productMode}`}>
     <header>
       <div><span className="eyebrow">A Panchatantra-inspired AI decision council</span><h1>Sagacity <em>Syndicate</em></h1></div>
-      <span className={`phase phase--${visiblePhase}`}>{visiblePhase.replaceAll("_", " ")}</span>
+      <div className="header-actions">
+        <button className="quiet-button" onClick={startNewDecision} disabled={activePhases.includes(phase)}>New decision</button>
+        <span className={`phase phase--${visiblePhase}`}>{visiblePhase.replaceAll("_", " ")}</span>
+      </div>
     </header>
 
     {productMode === "deliberating" || productMode === "reconvening" ? <section className="council-status">
@@ -662,11 +723,13 @@ export default function App() {
             ? { title: "Ready for written context.", description: "Enter the decision, hard constraints, and time horizon, then choose Convene." }
             : emptyCopy[voiceIntakeStage]}
         />
-        {scroll && productMode === "completed" && <DecisionWorkspace
+        {decisionHistory.length > 0 && productMode !== "deliberating" && productMode !== "reconvening" && <DecisionWorkspace
           entries={decisionHistory}
           currentDeliberationId={deliberationId.current}
+          onOpen={openSavedDecision}
           onClear={() => {
-            const current = [...decisionHistory].reverse().find((entry) => entry.deliberationId === deliberationId.current);
+            const current = [...decisionHistory].reverse().find((entry) => entry.deliberationId === deliberationId.current)
+              ?? decisionHistory.at(-1);
             clearDecisionHistory();
             setDecisionHistory(current ? recordDecisionHistory({
               deliberationId: current.deliberationId,
@@ -678,6 +741,14 @@ export default function App() {
             }) : []);
           }}
         />}
+        {decisionHistory.length === 0 && productMode === "conversation" && <section className="decision-workspace history-recovery">
+          <div><span className="eyebrow">Decision history</span><h3>No browser history loaded</h3></div>
+          <p>Completed council results may still be recoverable from this device's local deliberation log.</p>
+          <button className="artifact-button" disabled={historyRecoveryStatus === "recovering"} onClick={() => void recoverHistoryFromLogs()}>
+            {historyRecoveryStatus === "recovering" ? "Recovering…" : "Recover from local logs"}
+          </button>
+          {historyRecoveryStatus === "empty" && <small>No verified results were found in the local log.</small>}
+        </section>}
       </div>
     </section>
     <DiagnosticsDrawer

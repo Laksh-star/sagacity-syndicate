@@ -5,10 +5,12 @@ export function DecisionWorkspace({
   entries,
   currentDeliberationId,
   onClear,
+  onOpen,
 }: {
   entries: DecisionHistoryEntry[];
   currentDeliberationId?: string;
   onClear: () => void;
+  onOpen: (entry: DecisionHistoryEntry) => void;
 }) {
   if (!entries.length) return null;
   const currentEntries = entries.filter((entry) => entry.deliberationId === currentDeliberationId);
@@ -45,7 +47,10 @@ export function DecisionWorkspace({
       <div>
         {[...entries].reverse().map((entry) => <article key={`${entry.deliberationId}:${entry.deliberationRevision}`}>
           <div><strong>{entry.scroll.decision}</strong><small>{new Date(entry.savedAt).toLocaleString()} · {entry.roundMode} · {Math.round(entry.scroll.confidence * 100)}%</small></div>
-          <button className="quiet-button" onClick={() => downloadDecisionMarkdown(entry)}>Export</button>
+          <div className="history-actions">
+            <button className="quiet-button" onClick={() => onOpen(entry)}>{entry.deliberationId === currentDeliberationId ? "Open" : "View"}</button>
+            <button className="quiet-button" onClick={() => downloadDecisionMarkdown(entry)}>Export</button>
+          </div>
         </article>)}
       </div>
     </details>

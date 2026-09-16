@@ -120,4 +120,19 @@ describe("authoritative decision persistence", () => {
     // With no explicit history record, migration safely exposes the current Scroll.
     expect(loadDecisionHistory(storage)).toHaveLength(1);
   });
+
+  it("salvages valid history entries instead of deleting the whole collection", () => {
+    const storage = new MemoryStorage();
+    recordDecisionHistory({
+      deliberationId: "decision_1", conversationRevision: 1, deliberationRevision: 1, roundMode: "initial", scroll,
+    }, storage);
+    const raw = JSON.parse(storage.getItem("sagacity-syndicate.decision-history.v1") as string) as { entries: unknown[] };
+    raw.entries.push({ version: 1, scroll: {} });
+    storage.setItem("sagacity-syndicate.decision-history.v1", JSON.stringify(raw));
+
+    const history = loadDecisionHistory(storage);
+    expect(history).toHaveLength(1);
+    expect(history[0]?.deliberationId).toBe("decision_1");
+    expect(JSON.parse(storage.getItem("sagacity-syndicate.decision-history.v1") as string).entries).toHaveLength(1);
+  });
 });

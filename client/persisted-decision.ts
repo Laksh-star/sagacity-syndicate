@@ -15,6 +15,8 @@ const PersistedDecisionSchema = z.object({
   scroll: DecisionScrollSchema,
   trace: CouncilTraceSchema.optional(),
 }).strict();
+export const RecoverableDecisionSchema = PersistedDecisionSchema.omit({ version: true, savedAt: true });
+export type RecoverableDecision = z.infer<typeof RecoverableDecisionSchema>;
 
 export type PersistedDecision = z.infer<typeof PersistedDecisionSchema>;
 
@@ -64,8 +66,24 @@ export function loadDecisionHistory(storage = browserStorage()): DecisionHistory
       const latest = loadPersistedDecision(storage);
       return latest ? [latest] : [];
     }
-    const parsed = DecisionHistorySchema.safeParse(JSON.parse(raw));
+    const value = JSON.parse(raw) as unknown;
+    const parsed = DecisionHistorySchema.safeParse(value);
     if (parsed.success) return parsed.data.entries;
+    // History is a convenience collection, not one atomic authority record.
+    // Preserve individually valid entries when an older or damaged entry no
+    // longer matches the current bounded schema.
+    const candidates = value && typeof value === "object" && Array.isArray((value as { entries?: unknown }).entries)
+      ? (value as { entries: unknown[] }).entries
+      : [];
+    const entries = candidates
+      .map((candidate) => PersistedDecisionSchema.safeParse(candidate))
+      .filter((candidate): candidate is { success: true; data: PersistedDecision } => candidate.success)
+      .map((candidate) => candidate.data)
+      .slice(-DECISION_HISTORY_LIMIT);
+    if (entries.length) {
+      storage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(DecisionHistorySchema.parse({ version: 1, entries })));
+      return entries;
+    }
     storage.removeItem(HISTORY_STORAGE_KEY);
   } catch {
     try { storage.removeItem(HISTORY_STORAGE_KEY); } catch { /* Storage can be unavailable or blocked. */ }

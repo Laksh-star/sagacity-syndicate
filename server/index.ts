@@ -11,6 +11,7 @@ import { CouncilOrchestrator } from "./orchestration/council.js";
 import { VoiceMaterialityAssessor } from "./voice/materiality.js";
 import { VoiceReadinessAssessor } from "./voice/readiness.js";
 import { LiveJsonlLogger } from "./logging/live-jsonl.js";
+import { recoverableDecisionHistory } from "./logging/decision-history.js";
 
 const app = express();
 app.use(express.json({ limit: "64kb" }));
@@ -28,6 +29,10 @@ const liveLogger = new LiveJsonlLogger();
 
 app.get("/api/health", (_request, response) => {
   response.json({ ok: true, mode: config.mockCouncil ? "mock" : "live", liveEnabled: Boolean(config.apiKey) });
+});
+
+app.get("/api/decision-history", async (_request, response) => {
+  response.json(await recoverableDecisionHistory());
 });
 
 app.post("/api/live/session", async (request, response) => {

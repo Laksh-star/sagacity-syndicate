@@ -10,6 +10,8 @@ import {
   type VoiceReadinessAssessment,
   type VoiceReadinessRequest,
 } from "../shared/schemas";
+import { RecoverableDecisionSchema, type RecoverableDecision } from "./persisted-decision";
+import { z } from "zod";
 
 export async function streamDeliberation(
   request: DeliberationRequest,
@@ -75,4 +77,10 @@ export function recordLiveDiagnostic(event: LiveDiagnosticEvent): void {
     body: JSON.stringify(event),
     keepalive: true,
   }).catch(() => undefined);
+}
+
+export async function recoverDecisionHistory(): Promise<RecoverableDecision[]> {
+  const response = await fetch("/api/decision-history");
+  if (!response.ok) throw new Error(`Decision history recovery failed (${response.status}).`);
+  return z.array(RecoverableDecisionSchema).max(10).parse(await response.json());
 }
