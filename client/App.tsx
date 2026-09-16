@@ -3,7 +3,7 @@ import type {
   AgentCardState, AgentName, CouncilEvent, CouncilPhase, CouncilTrace, DecisionScroll as DecisionScrollType,
   LiveDiagnosticEvent, VoiceInterruptionAssessment,
 } from "../shared/schemas";
-import { createCouncilThinkingContext, createVoiceBrief, createVoiceCommentary } from "../shared/voice";
+import { createCouncilStartedCommentary, createCouncilThinkingContext, createVoiceBrief, createVoiceCommentary } from "../shared/voice";
 import { classifyLocalVoiceIntent, interruptionAction, obviousMaterialAssessment, obviousNonMaterialAssessment } from "../shared/voice-policy";
 import { assessVoiceInterruption, assessVoiceReadiness, interruptDeliberation, recordLiveDiagnostic, recoverDecisionHistory, streamDeliberation } from "./api";
 import { AgentCard } from "./components/AgentCard";
@@ -172,6 +172,7 @@ export default function App() {
     diagnostic({ event: "live.delegation.bound_to_revision", delegationId: delegationId ?? undefined, ...revision, detail: `causalTurn=${options.delegation?.causalTurnId ?? "text"}` });
     diagnostic({ event: "council.started", delegationId: delegationId ?? undefined, ...revision, detail: options.reconvening ? "reconvening" : "initial" });
     setAuthoritativeLiveStatus("ACTIVE", "The council has actually started. You may acknowledge this briefly. Do not state findings before verified synthesis arrives.", delegationId, revision);
+    if (voice.current) appendLive(createCouncilStartedCommentary(Boolean(options.reconvening)), delegationId, "commentary", revision);
 
     const acceptEvent = (event: CouncilEvent) => {
       if (!lifecycle.current.isCurrent(revision)) {

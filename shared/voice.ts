@@ -62,6 +62,12 @@ export function createVoiceCommentary(brief: VoiceBrief): string {
   ].filter(Boolean).join("\n");
 }
 
+export function createCouncilStartedCommentary(reconvening: boolean): string {
+  return reconvening
+    ? "The changed constraint has been handed to the council and reconvening has actually started. Briefly acknowledge this in one sentence. Do not state or imply any findings yet."
+    : "The decision has been handed to the council and deliberation has actually started. Briefly say, ‘I’ll put that to the council.’ Do not state or imply any findings yet.";
+}
+
 export function voiceBriefWordCount(brief: VoiceBrief): number {
   return words(Object.values(brief).filter(Boolean).join(" ")).length;
 }

@@ -1,8 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { DecisionScrollSchema } from "../shared/schemas.js";
-import { createCouncilThinkingContext, createVoiceBrief, createVoiceCommentary, voiceBriefWordCount } from "../shared/voice.js";
+import { createCouncilStartedCommentary, createCouncilThinkingContext, createVoiceBrief, createVoiceCommentary, voiceBriefWordCount } from "../shared/voice.js";
 
 describe("Decision Scroll voice delivery", () => {
+  it("speaks the acknowledgement only after delegation is authoritatively active", () => {
+    expect(createCouncilStartedCommentary(false)).toContain("actually started");
+    expect(createCouncilStartedCommentary(false)).toContain("I’ll put that to the council");
+    expect(createCouncilStartedCommentary(true)).toContain("reconvening");
+    expect(createCouncilStartedCommentary(true)).toContain("Do not state or imply any findings yet");
+  });
+
   it("keeps the full Scroll authoritative while producing a bounded spoken brief and quiet context", () => {
     const scroll = DecisionScrollSchema.parse({
       decision: "Delay permanent relocation until you have verified hiring traction. Start a remote search now and use a short visit only for confirmed interviews.",
