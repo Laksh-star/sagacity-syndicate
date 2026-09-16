@@ -15,6 +15,8 @@ The agents analyze independently, cross-examine one another, and feed a bounded 
 - [User Guide](USER_GUIDE.md) — practical voice and text workflows, result interpretation, follow-ups, privacy, and troubleshooting.
 - [Test Plan](TEST_PLAN.md) — automated, mock, live Agents API, and real GPT-Live validation.
 - [Live Voice Test Trail — 13 September 2026](docs/2026-09-13-live-voice-test-trail.md) — observed responses, lifecycle evidence, failures, corrective commits, and remaining live validation.
+- [Live Acceptance Test Trail — 15 September 2026](docs/2026-09-15-live-acceptance-test-trail.md) — supervised end-to-end voice, interruption, reconvening, refresh, and exploration evidence.
+- [Reliability and Voice-Correction Test Trail — 16 September 2026](docs/2026-09-16-reliability-test-trail.md) — server-restart hydration, pointer capture, Council Map integrity, transcript ambiguity, and the successful corrected revision.
 - [Implementation Note](IMPLEMENTATION_NOTE.md) — the original failure analysis and chosen fix.
 
 ![Sagacity Syndicate showing a completed live Bangalore relocation decision](docs/assets/bangalore-decision-scroll.jpg)
@@ -172,8 +174,9 @@ npm start          # serve production build on 127.0.0.1:8787
 
 - Single local user; no authentication or database.
 - Mock mode verifies UI and orchestration semantics, not OpenAI account access.
-- Initial Agents API deliberation and Impact Router reconvening were live-tested on 2026-09-12. GPT-Live delegation, post-decision exploration, refresh persistence, explicit deadline reconvening, phase progress, playback suppression, and concise audible briefing were live-tested through 2026-09-15. The restart-safe semantic-continuity correction, pointer-capture boundary, and provider-generated Council Map trace are covered by automated tests but still require the focused real-account retest in `docs/2026-09-16-reliability-retest-plan.md`.
+- Initial Agents API deliberation and Impact Router reconvening were live-tested on 2026-09-12. GPT-Live delegation, post-decision exploration, refresh persistence, explicit deadline reconvening, phase progress, playback suppression, and concise audible briefing were live-tested through 2026-09-15. The restart-safe `previousScroll` hydration path, pointer-capture boundary, decision-history persistence, and provider-generated Council Map were supervised with a real account on 2026-09-16. The provider-session recovery branch remains automated-test verified because the repaired live run did not encounter another broken stream.
 - Transcript events are fragments and can contain recognition errors. Turn completion uses the strongest available push-to-talk event boundary, not linguistic guessing.
+- A complete transcript can still contain a material recognition error such as “now” becoming “not.” A confirmation step for ambiguous high-impact corrections remains a recommended product improvement.
 
 ## Documentation baseline
 
