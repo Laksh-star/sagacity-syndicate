@@ -71,7 +71,7 @@ The delegation's `offset_ms` binds it to the user turn that caused it. That caus
 - confident changed constraints cancel/stale the active round and reconvene;
 - ambiguous statements preserve work and prompt one brief clarification.
 
-Push-to-talk also controls browser playback independently of council state. Pressing the control immediately suppresses Sutradhara audio, keeps it suppressed through the user turn, and resumes only when a post-turn Sutradhara response begins. Stopping speech never cancels council work by itself; only the completed-turn materiality path can invalidate a deliberation.
+Push-to-talk also controls browser playback independently of council state. Pressing the control immediately suppresses Sutradhara audio, captures the active pointer so small movement outside the button cannot end the turn, keeps output suppressed through the user turn, and resumes only when a post-turn Sutradhara response begins. Recording stops once on deliberate release, browser cancellation, or lost pointer capture; the bounded `live.push_to_talk.stopped` diagnostic records which boundary occurred. Stopping speech never cancels council work by itself; only the completed-turn materiality path can invalidate a deliberation.
 
 Spoken delivery and the durable artifact are deliberately different:
 
@@ -172,7 +172,7 @@ npm start          # serve production build on 127.0.0.1:8787
 
 - Single local user; no authentication or database.
 - Mock mode verifies UI and orchestration semantics, not OpenAI account access.
-- Initial Agents API deliberation and Impact Router reconvening were live-tested on 2026-09-12. GPT-Live delegation, post-decision exploration, refresh persistence, explicit deadline reconvening, phase progress, and concise audible briefing were live-tested on 2026-09-13. The restart-safe semantic-continuity correction is covered by automated tests but still requires one real-account microphone retest.
+- Initial Agents API deliberation and Impact Router reconvening were live-tested on 2026-09-12. GPT-Live delegation, post-decision exploration, refresh persistence, explicit deadline reconvening, phase progress, playback suppression, and concise audible briefing were live-tested through 2026-09-15. The restart-safe semantic-continuity correction, pointer-capture boundary, and provider-generated Council Map trace are covered by automated tests but still require the focused real-account retest in `docs/2026-09-16-reliability-retest-plan.md`.
 - Transcript events are fragments and can contain recognition errors. Turn completion uses the strongest available push-to-talk event boundary, not linguistic guessing.
 
 ## Documentation baseline

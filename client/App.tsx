@@ -12,6 +12,7 @@ import { DecisionScroll } from "./components/DecisionScroll";
 import { DecisionWorkspace } from "./components/DecisionWorkspace";
 import { DiagnosticsDrawer, type LocalDiagnostic } from "./components/DiagnosticsDrawer";
 import { VoiceControl } from "./components/VoiceControl";
+import type { PushToTalkStopReason } from "./components/VoiceControl";
 import { createTypedCorrectionTurn } from "./decision-artifacts";
 import { clearDecisionHistory, clearPersistedDecision, loadDecisionHistory, loadPersistedDecision, persistDecision, recordDecisionHistory, reconveningDecisionContext, restoredDecisionContext, type DecisionHistoryEntry } from "./persisted-decision";
 import { VoiceCouncilLifecycle, type CouncilRevision } from "./voice/council-lifecycle";
@@ -512,6 +513,11 @@ export default function App() {
     void runCouncil({ conversationChanged: false });
   };
 
+  const setPushToTalk = (active: boolean, stopReason?: PushToTalkStopReason) => {
+    voice.current?.setTalking(active);
+    if (!active && stopReason) diagnostic({ event: "live.push_to_talk.stopped", detail: `reason=${stopReason}` });
+  };
+
   const startNewDecision = () => {
     fetchAbort.current?.abort();
     fallbackTimers.current.forEach(clearTimeout);
@@ -587,7 +593,7 @@ export default function App() {
         </div>
 
         {inputMode === "voice" ? <>
-          <VoiceControl status={voiceStatus} productMode={productMode} playbackState={playbackState} onConnect={connectVoice} onTalk={(active) => voice.current?.setTalking(active)} />
+          <VoiceControl status={voiceStatus} productMode={productMode} playbackState={playbackState} onConnect={connectVoice} onTalk={setPushToTalk} />
           <p className="mode-help">No written Decision Context is required. Speak naturally; a ready decision is sent to the council automatically.</p>
           <div
             className="transcript"

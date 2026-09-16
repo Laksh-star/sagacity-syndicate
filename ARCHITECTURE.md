@@ -122,7 +122,7 @@ Raw transcripts and original intake text are not added to either store. A typed 
 
 ### Browser playback interruption
 
-`LivePlaybackController` owns only the browser model-audio element. On push-to-talk it mutes that element immediately, remains suppressed until the user turn completes, rejects assistant transcript timestamps that predate that completion boundary, and unmutes for the next post-turn Sutradhara response. It does not mutate council revisions or issue provider cancellation.
+`LivePlaybackController` owns only the browser model-audio element. On push-to-talk it mutes that element immediately, remains suppressed until the user turn completes, rejects assistant transcript timestamps that predate that completion boundary, and unmutes for the next post-turn Sutradhara response. The voice control separately captures the active pointer so pointer drift cannot finish a turn, releases it on pointer-up or cancellation, and treats lost capture as a one-shot safety stop. It does not mutate council revisions or issue provider cancellation.
 
 This separation is intentional: Live microphone mute controls caller input, browser media controls what the user hears, and the materiality/revision layer controls whether delegated work remains valid. Tests can verify the controller and state transitions; actual speaker output still requires a real-account browser pass.
 
@@ -515,6 +515,7 @@ A healthy initial voice handoff normally contains:
 live.session.started
 live.user_turn.started
 live.user_turn.completed
+live.push_to_talk.stopped: reason=pointer_up|pointer_cancel|lost_pointer_capture
 live.readiness.assessed
 live.delegation.created OR live.delegation.fallback
 live.delegation.bound_to_revision

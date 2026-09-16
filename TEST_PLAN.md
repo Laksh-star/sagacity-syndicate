@@ -228,6 +228,19 @@ Expected:
 - Current work is not destroyed automatically.
 - Sutradhara asks one concise clarification or preserves the possible change until confirmation.
 
+### V9 — Push-to-talk pointer drift
+
+1. Hold the voice control and continue speaking.
+2. While still holding, move the pointer slightly outside the visible button, then back inside.
+3. Release only after finishing the sentence.
+
+Expected:
+
+- Moving outside does not complete the user turn or resume Sutradhara.
+- One completed user turn appears only after deliberate release.
+- `live.push_to_talk.stopped` records `reason=pointer_up` exactly once.
+- A browser or operating-system cancellation records `pointer_cancel` or `lost_pointer_capture` and never produces duplicate stop handling.
+
 ## 6. Failure and recovery tests
 
 ### F1 — Microphone unavailable
@@ -281,6 +294,35 @@ Expected:
 - Cancellation events include stable idempotency keys.
 - Successful runs produce per-stage `agent.run` records and one aggregate `council.telemetry` record.
 
+### F7 — Server-restart continuity
+
+1. Complete an initial real-account voice decision and retain its authoritative Scroll.
+2. Stop and restart the Express process so its in-memory council record and provider-session references are gone.
+3. Refresh the browser, reconnect voice, and confirm Sutradhara can explain the restored result.
+4. Speak one material correction that depends on the original decision context.
+
+Expected:
+
+- The new request includes `previousScroll`.
+- `logs/deliberations.jsonl` records `council.context.hydrated`.
+- Impact Router runs and all three specialists enter independent and cross-examination phases.
+- The result mode is `full`, not `initial` or `selective`.
+- The new Scroll preserves the original decision subject while incorporating the changed constraint.
+- The prior Scroll remains visible until the new revision becomes authoritative.
+
+### F8 — Fresh provider-generated Council Map trace
+
+Use a decision created after the Council Map release; do not rely on an older stored Scroll.
+
+Expected:
+
+- Map view shows three selectable specialist nodes and six bounded critique edges.
+- Each specialist exposes distinct `Opened with`, `Challenged`, and `Survived` text.
+- Detailed Trail shows the same bounded trace without observations, uncertainties, provider payloads, or chain-of-thought.
+- After one material reconvening, both revision selectors show their own trace and final synthesis.
+- Refresh preserves the newest trace and revision navigation.
+- Older records without a trace continue to say `detail not retained` instead of fabricating history.
+
 ## 7. Evidence checklist
 
 Capture the following without secrets or private decision content:
@@ -292,4 +334,4 @@ Capture the following without secrets or private decision content:
 - Bounded excerpts from both JSONL logs showing revisions and lifecycle event names.
 - Manual note of spoken briefing duration and whether each follow-up caused a rerun.
 
-The release passes only when automated checks pass, text-first behavior remains intact, the normal-browser voice sequence passes V1–V8, and no stale round can render or speak.
+The release passes only when automated checks pass, text-first behavior remains intact, the normal-browser voice sequence passes V1–V9, F7 and F8 have real-account evidence, and no stale round can render or speak.
