@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { MockAgentRuntime } from "../server/agents/mock-runtime.js";
-import type { AgentRuntime } from "../server/agents/runtime.js";
+import type { AgentRun, AgentRuntime } from "../server/agents/runtime.js";
 import { cancellationIdempotencyKey, CouncilOrchestrator } from "../server/orchestration/council.js";
 import type { CouncilEvent } from "../shared/schemas.js";
 
@@ -144,6 +144,38 @@ describe("CouncilOrchestrator", () => {
     expect(entries).toContainEqual(expect.objectContaining({
       event: "council.telemetry",
       data: expect.objectContaining({ calls: 7, repairedCalls: 0 }),
+    }));
+  });
+
+  it("normalizes a specialist self-target without failing synthesis", async () => {
+    const base = new MockAgentRuntime();
+    const entries: Array<{ event: string; data?: unknown }> = [];
+    const logger = { write: async (entry: { event: string; data?: unknown }) => { entries.push(entry); } };
+    const runtime: AgentRuntime = {
+      start: async <T>(args: Parameters<AgentRuntime["start"]>[0]): Promise<AgentRun<T>> => {
+        const run = await base.start(args) as AgentRun<T>;
+        if (args.input.includes('"phase":"critique"') && args.instructions.includes("Your critic identity is forethought.")) {
+          return {
+            ...run,
+            output: { ...(run.output as object), targetAgents: ["forethought", "quickaction"] },
+          } as AgentRun<T>;
+        }
+        return run;
+      },
+      continue: (args) => base.continue(args),
+      cancel: (id, key) => base.cancel(id, key),
+    };
+    const council = new CouncilOrchestrator(runtime, { council: "mock", synthesis: "mock" }, logger as never);
+
+    const result = await council.deliberate({
+      deliberationId: "self-target", conversationRevision: 1, deliberationRevision: 1, context: "Should we run a pilot?",
+    }, () => {});
+
+    expect(result.trace?.critiqueEdges).toHaveLength(6);
+    expect(result.trace?.critiqueEdges.every((edge) => edge.critic !== edge.target)).toBe(true);
+    expect(entries).toContainEqual(expect.objectContaining({
+      event: "agent.critique.normalized",
+      data: { critic: "forethought", reason: "self_target_removed" },
     }));
   });
 

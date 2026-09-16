@@ -55,4 +55,17 @@ describe("bounded council trace", () => {
       expect(event.trace?.contributions.examiner.survived).toBe(scroll.examiner);
     }
   });
+
+  it("cannot create a self-edge from a malformed model target list", () => {
+    const malformed = {
+      ...critiques,
+      forethought: { ...critiques.forethought, targetAgents: ["forethought", "quickaction"] as AgentName[] },
+    };
+    const trace = createCouncilTrace(opinions, malformed, scroll);
+
+    expect(trace.critiqueEdges).toHaveLength(6);
+    expect(trace.critiqueEdges.every((edge) => edge.critic !== edge.target)).toBe(true);
+    expect(trace.critiqueEdges.filter((edge) => edge.critic === "forethought").map((edge) => edge.target))
+      .toEqual(["quickaction", "examiner"]);
+  });
 });

@@ -240,7 +240,19 @@ export class CouncilOrchestrator {
     });
     const critique = CritiqueSchema.parse(run.output);
     if (critique.critic !== agent) throw new Error(`${agent} returned the wrong critic identity.`);
-    return critique;
+    const targetAgents = agents.filter((candidate) => candidate !== agent);
+    const targetsWereCanonical = critique.targetAgents.length === targetAgents.length
+      && targetAgents.every((target) => critique.targetAgents.includes(target));
+    if (!targetsWereCanonical) {
+      await this.log(id, record, "agent.critique.normalized", {
+        critic: agent,
+        reason: critique.targetAgents.includes(agent) ? "self_target_removed" : "peer_targets_restored",
+      });
+    }
+    // The relationship graph is application-owned: every specialist critiques
+    // the other two. Never allow a model-produced target list to create a
+    // self-edge or omit a peer from the bounded Council Map.
+    return { ...critique, targetAgents };
   }
 
   private async synthesize(id: string, context: string, record: RecordState, signal: AbortSignal): Promise<DecisionScroll> {
@@ -425,7 +437,7 @@ export function createCouncilTrace(
   const critiqueEdges = agents.flatMap((critic) => {
     const critique = critiques[critic];
     if (!critique) return [];
-    return critique.targetAgents.map((target) => ({
+    return agents.filter((target) => target !== critic).map((target) => ({
       critic,
       target,
       challenge: critique.revisionAdvice,
