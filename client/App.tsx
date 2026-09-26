@@ -1,19 +1,22 @@
 import { useEffect, useRef, useState } from "react";
 import type {
   AgentCardState, AgentName, CouncilEvent, CouncilPhase, CouncilTrace, DecisionScroll as DecisionScrollType,
-  LiveDiagnosticEvent, VoiceInterruptionAssessment,
+  ConstraintConfirmation as ConstraintConfirmationType, LiveDiagnosticEvent, VoiceInterruptionAssessment,
 } from "../shared/schemas";
+import { classifyConfirmationReply, confirmationPrompt, createConstraintConfirmation } from "../shared/constraint-confirmation";
 import { createCouncilStartedCommentary, createCouncilThinkingContext, createVoiceBrief, createVoiceCommentary } from "../shared/voice";
 import { classifyLocalVoiceIntent, interruptionAction, obviousMaterialAssessment, obviousNonMaterialAssessment } from "../shared/voice-policy";
 import { assessVoiceInterruption, assessVoiceReadiness, interruptDeliberation, recordLiveDiagnostic, recoverDecisionHistory, streamDeliberation } from "./api";
 import { AgentCard } from "./components/AgentCard";
 import { CouncilMap } from "./components/CouncilMap";
+import { ConstraintConfirmation } from "./components/ConstraintConfirmation";
 import { DecisionScroll } from "./components/DecisionScroll";
 import { DecisionWorkspace } from "./components/DecisionWorkspace";
 import { DiagnosticsDrawer, type LocalDiagnostic } from "./components/DiagnosticsDrawer";
 import { VoiceControl } from "./components/VoiceControl";
 import type { PushToTalkStopReason } from "./components/VoiceControl";
 import { createTypedCorrectionTurn } from "./decision-artifacts";
+import { clearPendingConstraint, loadPendingConstraint, persistPendingConstraint } from "./pending-constraint";
 import { clearDecisionHistory, clearPersistedDecision, loadDecisionHistory, loadPersistedDecision, persistDecision, recordDecisionHistory, reconveningDecisionContext, restoredDecisionContext, type DecisionHistoryEntry } from "./persisted-decision";
 import { VoiceCouncilLifecycle, type CouncilRevision } from "./voice/council-lifecycle";
 import { LiveAppendTracker, type LiveAppendKind } from "./voice/append-tracker";
@@ -29,7 +32,7 @@ import "./styles.css";
 const names: AgentName[] = ["forethought", "quickaction", "examiner"];
 const freshAgents = (): Record<AgentName, AgentCardState> => ({ forethought: "waiting", quickaction: "waiting", examiner: "waiting" });
 const activePhases: CouncilPhase[] = ["routing", "independent", "cross_examining", "synthesizing"];
-type ProductMode = "conversation" | "deliberating" | "completed" | "reconvening";
+type ProductMode = "conversation" | "deliberating" | "completed" | "reconvening" | "confirming_constraint";
 type InputMode = "voice" | "text";
 type VoiceIntakeStage = "ready" | "listening" | "captured" | "clarifying" | "preparing";
 
@@ -43,11 +46,12 @@ const emptyCopy: Record<VoiceIntakeStage, { title: string; description: string }
 
 export default function App() {
   const [restored] = useState(() => loadPersistedDecision());
+  const [restoredPending] = useState(() => loadPendingConstraint());
   const [decisionHistory, setDecisionHistory] = useState<DecisionHistoryEntry[]>(() => loadDecisionHistory());
   const [context, setContext] = useState("");
   const [constraint, setConstraint] = useState("");
-  const [phase, setPhase] = useState<CouncilPhase>(restored ? "completed" : "idle");
-  const [productMode, setProductMode] = useState<ProductMode>(restored ? "completed" : "conversation");
+  const [phase, setPhase] = useState<CouncilPhase>(restoredPending ? "confirming_constraint" : restored ? "completed" : "idle");
+  const [productMode, setProductMode] = useState<ProductMode>(restoredPending ? "confirming_constraint" : restored ? "completed" : "conversation");
   const [agentStates, setAgentStates] = useState<Record<AgentName, AgentCardState>>(
     restored ? { forethought: "done", quickaction: "done", examiner: "done" } : freshAgents,
   );
@@ -56,6 +60,7 @@ export default function App() {
   const [roundMode, setRoundMode] = useState<string | undefined>(restored?.roundMode);
   const [routeNote, setRouteNote] = useState<string>();
   const [changedFact, setChangedFact] = useState<string>();
+  const [pendingConfirmation, setPendingConfirmation] = useState<ConstraintConfirmationType | undefined>(restoredPending);
   const [error, setError] = useState<string>();
   const [voiceStatus, setVoiceStatus] = useState<"offline" | "connecting" | "ready" | "talking">("offline");
   const [playbackState, setPlaybackState] = useState<LivePlaybackState>("idle");
@@ -68,7 +73,7 @@ export default function App() {
   const voice = useRef<LiveVoiceSession | undefined>(undefined);
   const lifecycle = useRef(new VoiceCouncilLifecycle());
   const deliberationId = useRef<string | undefined>(restored?.deliberationId);
-  const conversationRevision = useRef(restored?.conversationRevision ?? 0);
+  const conversationRevision = useRef(Math.max(restored?.conversationRevision ?? 0, restoredPending?.conversationRevision ?? 0));
   const deliberationRevision = useRef(restored?.deliberationRevision ?? 0);
   const fetchAbort = useRef<AbortController | undefined>(undefined);
   const contextRef = useRef(context);
@@ -76,6 +81,8 @@ export default function App() {
   const councilTraceRef = useRef(councilTrace);
   const transcriptRef = useRef(transcript);
   const productModeRef = useRef(productMode);
+  const pendingConfirmationRef = useRef(pendingConfirmation);
+  const pendingDelegation = useRef<LiveDelegation | undefined>(undefined);
   const processedTurns = useRef(new Set<string>());
   const revisionedTurns = useRef(new Set<string>());
   const activeDelegation = useRef<string | null>(null);
@@ -102,6 +109,7 @@ export default function App() {
   useEffect(() => { councilTraceRef.current = councilTrace; }, [councilTrace]);
   useEffect(() => { transcriptRef.current = transcript; }, [transcript]);
   useEffect(() => { productModeRef.current = productMode; }, [productMode]);
+  useEffect(() => { pendingConfirmationRef.current = pendingConfirmation; }, [pendingConfirmation]);
   useEffect(() => () => {
     fallbackTimers.current.forEach(clearTimeout);
     voice.current?.close();
@@ -212,15 +220,25 @@ export default function App() {
         } as const;
         persistDecision(decisionRecord);
         setDecisionHistory(recordDecisionHistory(decisionRecord));
-        setProductMode("completed");
-        setPhase("completed");
+        const confirmationStillPending = pendingConfirmationRef.current;
+        setProductMode(confirmationStillPending ? "confirming_constraint" : "completed");
+        setPhase(confirmationStillPending ? "confirming_constraint" : "completed");
         setVoiceIntakeStage("ready");
-        setChangedFact(undefined);
+        if (!confirmationStillPending) setChangedFact(undefined);
         diagnostic({ event: "council.completed", delegationId: delegationId ?? undefined, ...revision, detail: `mode=${event.mode}` });
         if (voice.current) {
-          setAuthoritativeLiveStatus("COMPLETED", "Verified synthesis succeeded. The full Decision Scroll is visible. Give only the concise briefing supplied next.", resultDelegation, revision);
           appendLive(createCouncilThinkingContext(event.scroll), resultDelegation, "thinking", revision);
-          appendLive(createVoiceCommentary(createVoiceBrief(event.scroll)), resultDelegation, "commentary", revision);
+          if (confirmationStillPending) {
+            setAuthoritativeLiveStatus(
+              "CLARIFYING",
+              "A verified result is available, but a possible material change still awaits explicit user confirmation. Do not brief or reconvene yet.",
+              resultDelegation,
+              revision,
+            );
+          } else {
+            setAuthoritativeLiveStatus("COMPLETED", "Verified synthesis succeeded. The full Decision Scroll is visible. Give only the concise briefing supplied next.", resultDelegation, revision);
+            appendLive(createVoiceCommentary(createVoiceBrief(event.scroll)), resultDelegation, "commentary", revision);
+          }
         }
         activeDelegation.current = null;
       } else if (event.type === "council.error") {
@@ -276,11 +294,106 @@ export default function App() {
     await runCouncil({ changedConstraint: changed, delegation, reconvening: true, conversationChanged: !conversationAlreadyAdvanced });
   };
 
+  const requestConstraintConfirmation = (
+    assessment: VoiceInterruptionAssessment,
+    delegation?: LiveDelegation,
+    replacing = false,
+  ) => {
+    const confirmation = createConstraintConfirmation(assessment, conversationRevision.current);
+    pendingConfirmationRef.current = confirmation;
+    pendingDelegation.current = delegation;
+    setPendingConfirmation(confirmation);
+    persistPendingConstraint(confirmation);
+    setChangedFact(confirmation.changedConstraint);
+    setProductMode("confirming_constraint");
+    if (!lifecycle.current.activeRound()) setPhase("confirming_constraint");
+    diagnostic({
+      event: replacing ? "live.constraint_confirmation.replaced" : "live.constraint_confirmation.requested",
+      delegationId: delegation?.id,
+      conversationRevision: conversationRevision.current,
+      deliberationRevision: deliberationRevision.current,
+      detail: `confidence=${confirmation.interpretationConfidence}; characters=${confirmation.changedConstraint.length}`,
+    });
+    appendLive(confirmationPrompt(confirmation), delegation?.id ?? activeDelegation.current, "commentary");
+  };
+
+  const confirmConstraint = async (delegation?: LiveDelegation) => {
+    const confirmation = pendingConfirmationRef.current;
+    if (!confirmation) return;
+    const selectedDelegation = delegation ?? pendingDelegation.current;
+    pendingConfirmationRef.current = undefined;
+    pendingDelegation.current = undefined;
+    setPendingConfirmation(undefined);
+    clearPendingConstraint();
+    diagnostic({
+      event: "live.constraint_confirmation.accepted",
+      delegationId: selectedDelegation?.id,
+      conversationRevision: conversationRevision.current,
+      deliberationRevision: deliberationRevision.current,
+      detail: `characters=${confirmation.changedConstraint.length}`,
+    });
+    appendLive(`The user confirmed this exact material change: ${confirmation.changedConstraint} The application will now reconvene the council.`, selectedDelegation?.id ?? null, "thinking");
+    await reconveneWithConstraint(confirmation.changedConstraint, selectedDelegation, true);
+  };
+
+  const rejectConstraint = (delegation?: LiveDelegation) => {
+    const confirmation = pendingConfirmationRef.current;
+    if (!confirmation) return;
+    pendingConfirmationRef.current = undefined;
+    pendingDelegation.current = undefined;
+    setPendingConfirmation(undefined);
+    clearPendingConstraint();
+    const active = lifecycle.current.activeRound();
+    setProductMode(active ? (active.reconvening ? "reconvening" : "deliberating") : scrollRef.current ? "completed" : "conversation");
+    if (!active) setPhase(scrollRef.current ? "completed" : "idle");
+    setChangedFact(undefined);
+    diagnostic({
+      event: "live.constraint_confirmation.rejected",
+      delegationId: delegation?.id,
+      conversationRevision: conversationRevision.current,
+      deliberationRevision: deliberationRevision.current,
+      detail: "The interpreted material change was rejected before reconvening.",
+    });
+    appendLive("The user rejected the interpreted material change. Briefly ask them to restate the exact corrected fact. Do not reconvene or claim the council has restarted.", delegation?.id ?? null, "commentary");
+  };
+
   const processCompletedUserTurn = async (turn: VoiceTurn, delegation?: LiveDelegation) => {
     if (!turn.text.trim()) return;
     noteConversationTurn(turn.id);
     const active = lifecycle.current.activeRound();
     const hasDecision = Boolean(scrollRef.current);
+
+    if (pendingConfirmationRef.current && processedTurns.current.has(turn.id)) {
+      if (delegation && !pendingDelegation.current) pendingDelegation.current = delegation;
+      return;
+    }
+
+    if (pendingConfirmationRef.current) {
+      processedTurns.current.add(turn.id);
+      const reply = classifyConfirmationReply(turn.text);
+      if (reply === "accept") {
+        await confirmConstraint(delegation);
+        return;
+      }
+      if (reply === "reject") {
+        rejectConstraint(delegation);
+        return;
+      }
+      let replacement: VoiceInterruptionAssessment;
+      try {
+        replacement = obviousMaterialAssessment(turn.text) ?? await assessVoiceInterruption({
+          utterance: turn.text,
+          currentContext: contextRef.current || "Voice-provided decision context.",
+          phase: active ? "deliberating" : "completed",
+          currentScroll: scrollRef.current,
+        });
+      } catch {
+        replacement = { material: false, reason: "The response did not clearly confirm or replace the pending constraint.", confidence: 0 };
+      }
+      if (replacement.material && replacement.changedConstraint) requestConstraintConfirmation(replacement, delegation, true);
+      else appendLive("Ask the user to answer yes or no, or restate the exact corrected constraint. Do not reconvene yet.", delegation?.id ?? null, "commentary");
+      return;
+    }
 
     if (!active && !hasDecision && delegation) {
       const replacedTurn = initialHandoffGate.current.replace(turn.id);
@@ -388,7 +501,7 @@ export default function App() {
     diagnostic({ event: "live.interruption.materiality", delegationId: delegation?.id, detail: `${assessment.material}:${assessment.confidence}:${assessment.reason}`.slice(0, 500) });
     const action = interruptionAction(assessment);
     if (action === "reconvene" && assessment.changedConstraint) {
-      await reconveneWithConstraint(assessment.changedConstraint, delegation, true);
+      requestConstraintConfirmation(assessment, delegation);
       return;
     }
     if (action === "clarify") {
@@ -413,6 +526,13 @@ export default function App() {
 
   const manualReconvene = async () => {
     if (!constraint.trim()) { setError("State the changed constraint before reconvening."); return; }
+    if (pendingConfirmationRef.current) {
+      pendingConfirmationRef.current = undefined;
+      pendingDelegation.current = undefined;
+      setPendingConfirmation(undefined);
+      clearPendingConstraint();
+      diagnostic({ event: "live.constraint_confirmation.accepted", detail: "The user replaced the pending voice interpretation with a precise typed correction." });
+    }
     await reconveneWithConstraint(constraint);
   };
 
@@ -427,6 +547,13 @@ export default function App() {
     });
     diagnostic({ event: "live.interruption.received", detail: `typed-correction; characters=${changed.length}` });
     diagnostic({ event: "live.interruption.materiality", detail: "true:1:User explicitly submitted a typed material correction." });
+    if (pendingConfirmationRef.current) {
+      pendingConfirmationRef.current = undefined;
+      pendingDelegation.current = undefined;
+      setPendingConfirmation(undefined);
+      clearPendingConstraint();
+      diagnostic({ event: "live.constraint_confirmation.accepted", detail: "The user replaced the voice interpretation with a precise typed correction." });
+    }
     if (voice.current) appendLive(`The user supplied this factual correction in the application: ${changed.slice(0, 400)}. The application is reconvening the council; do not answer from the prior result as if it were current.`, null, "thinking");
     await reconveneWithConstraint(changed);
   };
@@ -443,7 +570,18 @@ export default function App() {
       const bootstrap = createLiveSessionBootstrap(scrollRef.current);
       const verifiedRevision = lifecycle.current.verifiedResult()?.revision;
       if (bootstrap.thinkingContext) appendLive(bootstrap.thinkingContext, null, "thinking", verifiedRevision);
-      setAuthoritativeLiveStatus(bootstrap.status, bootstrap.statusDetail, null, verifiedRevision);
+      const confirmation = pendingConfirmationRef.current;
+      if (confirmation) {
+        setAuthoritativeLiveStatus(
+          "CLARIFYING",
+          "A material change is waiting for the user's explicit confirmation before reconvening.",
+          null,
+          verifiedRevision,
+        );
+        appendLive(confirmationPrompt(confirmation), null, "commentary", verifiedRevision);
+      } else {
+        setAuthoritativeLiveStatus(bootstrap.status, bootstrap.statusDetail, null, verifiedRevision);
+      }
     });
     session.addEventListener("closed", () => { setVoiceStatus("offline"); setPlaybackState("idle"); });
     session.addEventListener("talking", (event) => {
@@ -543,6 +681,9 @@ export default function App() {
     appendTracker.current = new LiveAppendTracker();
     completedTurnQueue.current = new SerialTaskQueue();
     activeDelegation.current = null;
+    pendingConfirmationRef.current = undefined;
+    pendingDelegation.current = undefined;
+    clearPendingConstraint();
     setContext("");
     setConstraint("");
     setScroll(undefined);
@@ -554,6 +695,7 @@ export default function App() {
     setRoundMode(undefined);
     setRouteNote(undefined);
     setChangedFact(undefined);
+    setPendingConfirmation(undefined);
     setError(undefined);
     setVoiceStatus("offline");
     setPlaybackState("idle");
@@ -577,6 +719,9 @@ export default function App() {
     councilTraceRef.current = entry.trace;
     transcriptRef.current = [];
     productModeRef.current = "completed";
+    pendingConfirmationRef.current = undefined;
+    pendingDelegation.current = undefined;
+    clearPendingConstraint();
     persistDecision({
       deliberationId: entry.deliberationId,
       conversationRevision: entry.conversationRevision,
@@ -596,6 +741,7 @@ export default function App() {
     setRoundMode(entry.roundMode);
     setRouteNote(undefined);
     setChangedFact(undefined);
+    setPendingConfirmation(undefined);
     setError(undefined);
     setVoiceStatus("offline");
     setPlaybackState("idle");
@@ -618,7 +764,9 @@ export default function App() {
     }
   };
 
-  const visiblePhase = productMode === "reconvening"
+  const visiblePhase = pendingConfirmation
+    ? "confirming_constraint"
+    : productMode === "reconvening"
     ? "reconvening"
     : productMode === "deliberating"
       ? phase === "synthesizing" ? "synthesizing" : "deliberating"
@@ -631,6 +779,7 @@ export default function App() {
       : productMode === "conversation" && voiceIntakeStage !== "ready"
           ? voiceIntakeStage
           : productMode;
+  const councilDisplayMode = productMode === "confirming_constraint" ? "completed" : productMode;
   const hasCompletedVoiceTurn = transcript.some((turn) => turn.role === "user" && turn.complete && turn.text.trim());
   return <main className={`mode-${productMode}`}>
     <header>
@@ -640,6 +789,12 @@ export default function App() {
         <span className={`phase phase--${visiblePhase}`}>{visiblePhase.replaceAll("_", " ")}</span>
       </div>
     </header>
+
+    {pendingConfirmation && <ConstraintConfirmation
+      confirmation={pendingConfirmation}
+      onConfirm={() => void confirmConstraint()}
+      onReject={() => rejectConstraint()}
+    />}
 
     {productMode === "deliberating" || productMode === "reconvening" ? <section className="council-status">
       <span className="eyebrow">{productMode === "reconvening" ? "New constraint received" : "Council session"}</span>
@@ -685,7 +840,7 @@ export default function App() {
 
         {(scroll || (voiceStatus !== "offline" && activePhases.includes(phase))) && <div className="reconvene">
           <label><span>{voiceStatus === "offline" ? "What materially changed?" : "Precise typed correction"}</span><input value={constraint} onChange={(event) => setConstraint(event.target.value)} placeholder="Add or revise one material constraint" /></label>
-          <button className="primary" onClick={() => void (voiceStatus === "offline" ? manualReconvene() : submitTypedCorrection())}>Reconvene</button>
+          <button className="primary" onClick={() => void (voiceStatus === "offline" ? manualReconvene() : submitTypedCorrection())}>{pendingConfirmation ? "Use correction & reconvene" : "Reconvene"}</button>
           {voiceStatus !== "offline" && <small className="reconvene-help">This correction enters the voice transcript and safely starts a new council revision.</small>}
         </div>}
         {routeNote && <p className="route-note"><strong>Impact Router:</strong> {routeNote}</p>}
@@ -699,7 +854,7 @@ export default function App() {
           entries={decisionHistory}
           currentDeliberationId={deliberationId.current}
           currentTrace={councilTrace}
-          mode={productMode}
+          mode={councilDisplayMode}
           phase={phase}
           agentStates={agentStates}
           deliberationRevision={deliberationRevision.current}
@@ -707,14 +862,14 @@ export default function App() {
         />}
         <DecisionScroll
           scroll={scroll}
-          mode={productMode}
+          mode={councilDisplayMode}
           onStartNew={startNewDecision}
           councilView={scroll ? <CouncilMap
             entries={decisionHistory}
             currentDeliberationId={deliberationId.current}
             currentScroll={scroll}
             currentTrace={councilTrace}
-            mode={productMode}
+            mode={councilDisplayMode}
             phase={phase}
             agentStates={agentStates}
             deliberationRevision={deliberationRevision.current}

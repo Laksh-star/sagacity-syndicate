@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CritiqueSchema, DecisionScrollSchema, ImpactRouteSchema, SpecialistOpinionSchema } from "../shared/schemas.js";
+import { ConstraintConfirmationSchema, CritiqueSchema, DecisionScrollSchema, ImpactRouteSchema, SpecialistOpinionSchema } from "../shared/schemas.js";
 
 describe("bounded council schemas", () => {
   it("accepts valid specialist and critique payloads", () => {
@@ -20,6 +20,24 @@ describe("bounded council schemas", () => {
     expect(() => DecisionScrollSchema.parse({
       decision: "Decide", rationale: "Because", forethought: "Risk", quickaction: "Move", examiner: "Assumption",
       triggerToReconvene: "Trigger", confidence: 2,
+    })).toThrow();
+  });
+
+  it("bounds pending material-constraint confirmations", () => {
+    expect(ConstraintConfirmationSchema.parse({
+      changedConstraint: "The budget is ₹40,000.",
+      confirmationQuestion: "I understood the budget as ₹40,000. Is that correct?",
+      newValue: "₹40,000",
+      interpretationConfidence: 0.91,
+      conversationRevision: 4,
+      createdAt: 1234,
+    }).newValue).toBe("₹40,000");
+    expect(() => ConstraintConfirmationSchema.parse({
+      changedConstraint: "The budget changed.",
+      confirmationQuestion: "Confirm",
+      interpretationConfidence: 2,
+      conversationRevision: 4,
+      createdAt: 1234,
     })).toThrow();
   });
 });

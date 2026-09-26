@@ -292,9 +292,10 @@ All provider output is parsed and validated locally with Zod. The same Zod defin
 | `SpecialistOpinion` | Independent lens | 1–4 observations, up to 3 uncertainties, confidence 0–1 |
 | `Critique` | Cross-examination | 1–2 targets, up to 2 agreements, 1–3 challenges, enumerated severity |
 | `ImpactRoute` | Reconvening scope | Unique subset of 0–3 agents, enumerated preservable fields, confidence 0–1 |
-| `DecisionScroll` | Authoritative result | Seven required fields, field-level character limits, confidence 0–1 |
+| `DecisionScroll` | Authoritative result | Seven required fields, field-level character limits, recommendation confidence 0–1; currently capped at 0.85 because key facts are user-supplied rather than tool-verified |
 | `VoiceBrief` | Facts for short speech | Five compact fields, no more than 120 words total |
 | `VoiceInterruptionAssessment` | Materiality decision | Boolean materiality, normalized changed constraint when material, reason, confidence |
+| `ConstraintConfirmation` | Durable pre-reconvening interpretation | Changed constraint, confirmation question, optional old/new values, interpretation confidence, conversation revision, timestamp |
 | `VoiceReadinessAssessment` | Clarify or convene | Enumerated action, no more than two missing facts, reason, confidence |
 
 An invalid agent response receives one repair continuation. A second invalid response fails visibly. No schema contains a chain-of-thought field.
@@ -310,6 +311,10 @@ stateDiagram-v2
     idle --> ready
     clarifying --> ready
     clarifying --> idle
+    completed --> confirming_constraint: material spoken correction
+    independent --> confirming_constraint: possible changed constraint
+    confirming_constraint --> routing: user confirms
+    confirming_constraint --> completed: user rejects
     ready --> routing: reconvening
     ready --> independent: initial round
     routing --> independent: material change
@@ -330,13 +335,14 @@ stateDiagram-v2
     failed --> ready
 ```
 
-The UI presents four higher-level product modes:
+The UI presents five higher-level product modes:
 
 | Product mode | Visual priority | Council phase examples |
 | --- | --- | --- |
 | Conversation | Sutradhara, voice control, transcript, optional context | `idle`, `clarifying`, `ready` |
 | Deliberating | Phase headline and three agent cards | `independent`, `cross_examining`, `synthesizing` |
 | Completed | Decision headline, confidence, compact views, expandable full Scroll | `completed` |
+| Confirming constraint | Reflected interpretation, old/new values, explicit confirm/reject controls; prior Scroll preserved | `confirming_constraint` |
 | Reconvening | Changed fact, rerun mode, current agent progress; prior Scroll preserved | `routing` through `synthesizing` |
 
 Agent cards are projections of real orchestration events: `waiting`, `thinking`, `challenging`, `done`, or `error`. They are not decorative timers.
@@ -385,7 +391,9 @@ flowchart TD
     FAST -->|Not obvious| MA[Bounded materiality assessment]
     MA -->|Clearly non-material| KEEP
     MA -->|Ambiguous| ASK[Ask one brief clarification and preserve work]
-    MA -->|Material changed fact| STALE[Mark active round stale and request cancellation]
+    MA -->|Material changed fact| CONFIRM[Reflect bounded interpretation]
+    CONFIRM -->|Rejected or restated| ASK
+    CONFIRM -->|Confirmed| STALE[Mark active round stale and request cancellation]
     STALE --> IR[Run Impact Router]
     IR -->|Confident subset| SEL[Selective reconvening]
     IR -->|Ambiguous or broad| FULL[Full reconvening]
@@ -396,10 +404,10 @@ flowchart TD
 Examples:
 
 - “Okay” and “What are they doing?” are non-material.
-- “My budget is ₹8 lakh, not ₹20 lakh” is material.
+- “My budget is ₹8 lakh, not ₹20 lakh” is material and must be confirmed before reconvening.
 - “That may not work” is ambiguous and should not destroy active work until clarified.
 
-After completion, ordinary questions such as “Why?” reuse the verified Scroll. New material facts take the reconvening path. The prior Scroll stays visible until the new synthesis passes revision and schema checks.
+After completion, ordinary questions such as “Why?” reuse the verified Scroll. New material facts enter `confirming_constraint`; no cancellation or new deliberation revision occurs until confirmation. Pending confirmation is stored locally without provider identifiers so refresh does not turn an unconfirmed transcript into action. The prior Scroll stays visible until the confirmed synthesis passes revision and schema checks.
 
 ## 10. Decision Scroll versus Voice Brief
 
@@ -530,7 +538,7 @@ live.commentary.sent
 
 The application does not log API keys, microphone audio, raw transcript deltas, or private chain-of-thought. Logs can contain bounded decision facts and complete Scroll fields, so review or delete them before sharing a project archive.
 
-The browser persists only the latest authoritative Scroll, bounded Council Map trace, round mode, council ID, and revision counters. It does not persist raw voice turns, the original decision prompt, complete specialist opinions, or provider payloads. A refresh restores the completed result and its map. When a new Live connection becomes ready, the application appends that verified Scroll as bounded quiet context and marks the authoritative status `COMPLETED` before new follow-ups are handled. Completed user turns enter a serial processing queue so asynchronous materiality checks cannot finish out of conversational order.
+The browser persists only the latest authoritative Scroll, bounded Council Map trace, round mode, council ID, revision counters, and any bounded material-constraint confirmation awaiting the user. The pending confirmation excludes provider and delegation identifiers. It does not persist raw voice turns, the original decision prompt, complete specialist opinions, or provider payloads. A refresh restores the completed result, its map, and an unresolved confirmation without silently reconvening. When a new Live connection becomes ready, the application appends the verified Scroll as bounded quiet context before new follow-ups are handled. Completed user turns enter a serial processing queue so asynchronous materiality checks cannot finish out of conversational order.
 
 On reconvening, the client always combines the prior verified Scroll with the latest conversation and changed constraint. If the server has also restarted and no in-memory council record exists, it hydrates the prior Scroll from `previousScroll`, runs the Impact Router, and performs a full three-specialist rebuild. A Scroll alone cannot safely recreate provider session IDs or the specialists' bounded prior opinions, so the server does not pretend that a selective continuation is available. **Start a new decision** deletes the record and closes the old Live session.
 

@@ -6,7 +6,7 @@ export function VoiceControl({
   status, productMode, playbackState, onConnect, onTalk,
 }: {
   status: "offline" | "connecting" | "ready" | "talking";
-  productMode: "conversation" | "deliberating" | "completed" | "reconvening";
+  productMode: "conversation" | "deliberating" | "completed" | "reconvening" | "confirming_constraint";
   playbackState: "idle" | "speaking" | "suppressed" | "awaiting_response";
   onConnect: () => void;
   onTalk: (active: boolean, stopReason?: PushToTalkStopReason) => void;
@@ -45,7 +45,7 @@ export function VoiceControl({
     onLostPointerCapture={(event) => stopTalking(event, "lost_pointer_capture")}
   >
     <span className="mic">●</span>
-    <strong>{status === "talking" ? "Listening…" : productMode === "completed" ? "Ask Sutradhara" : "Hold to speak"}</strong>
-    <small>{status === "talking" ? "Release when finished" : productMode === "deliberating" || productMode === "reconvening" ? "Ask a process question or add a constraint" : productMode === "completed" ? "Explore the verified decision" : "Hold when you want to speak"}</small>
+    <strong>{status === "talking" ? "Listening…" : productMode === "completed" ? "Ask Sutradhara" : productMode === "confirming_constraint" ? "Confirm or correct" : "Hold to speak"}</strong>
+    <small>{status === "talking" ? "Release when finished" : productMode === "deliberating" || productMode === "reconvening" ? "Ask a process question or add a constraint" : productMode === "confirming_constraint" ? "Say yes, no, or restate the exact constraint" : productMode === "completed" ? "Explore the verified decision" : "Hold when you want to speak"}</small>
   </button><p className={`playback-status playback-status--${playbackState}`} aria-live="polite"><i />{playbackCopy}</p></>;
 }

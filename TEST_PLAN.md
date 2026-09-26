@@ -87,6 +87,7 @@ Expected:
 Expected after M2:
 
 - Recommendation and confidence are prominent.
+- A synthesis that proposes confidence above 0.85 is deterministically capped at 0.85 while key evidence remains unverified.
 - Three compact specialist summaries are visible.
 - **View full Decision Scroll** expands to all seven fields.
 - The UI invites the user to ask Sutradhara about the result.
@@ -202,8 +203,10 @@ During an active round, say:
 Expected:
 
 - Materiality is `true` with a normalized changed constraint.
-- Cancellation is requested for the active round.
-- UI visibly enters reconvening.
+- UI visibly enters **confirming constraint** and reflects the old/new values.
+- No cancellation or deliberation revision occurs before confirmation.
+- Say “yes”; cancellation is then requested for the active round.
+- UI visibly enters reconvening only after confirmation.
 - A newer conversation and deliberation revision starts.
 - The prior round cannot render, enter quiet context, or speak if it completes late.
 
@@ -216,6 +219,8 @@ After a completed result, say:
 Expected:
 
 - The existing result remains visible as the prior verified decision.
+- The interpreted change requires confirmation and survives one browser refresh.
+- Reject it once and verify no council rerun; restate it and confirm.
 - Impact routing selects the required rerun scope.
 - A new authoritative Scroll and concise Voice Brief appear after synthesis.
 
@@ -227,6 +232,22 @@ Expected:
 
 - Current work is not destroyed automatically.
 - Sutradhara asks one concise clarification or preserves the possible change until confirmation.
+
+### V8A — High-impact transcript direction
+
+Run these as separate completed voice turns:
+
+- “The budget is now ₹40,000, replacing ₹1 lakh.”
+- “The budget is not ₹40,000.”
+- “The deadline is next week, not next month.”
+
+Expected:
+
+- Each material statement produces a distinct reflected interpretation.
+- Replacement direction is never reversed.
+- “Now” and “not” cannot trigger the same council request without user confirmation.
+- Saying “no” preserves current work and asks for a precise restatement.
+- A late pre-confirmation council result cannot clear the confirmation banner or trigger commentary for the unconfirmed change.
 
 ### V9 — Push-to-talk pointer drift
 
@@ -333,5 +354,6 @@ Capture the following without secrets or private decision content:
 - Screenshot of reconvening with the prior Scroll preserved.
 - Bounded excerpts from both JSONL logs showing revisions and lifecycle event names.
 - Manual note of spoken briefing duration and whether each follow-up caused a rerun.
+- Output of `npm run check:public-artifacts`; never paste Live, provider-session, or delegation identifiers into tracked reports.
 
 The release passes only when automated checks pass, text-first behavior remains intact, the normal-browser voice sequence passes V1–V9, F7 and F8 have real-account evidence, and no stale round can render or speak.

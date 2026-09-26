@@ -14,6 +14,12 @@ describe("council state machine", () => {
     expect(() => transition("idle", "completed")).toThrow(/Illegal council transition/);
   });
 
+  it("represents confirmation as a state before a revised round", () => {
+    expect(transition("completed", "confirming_constraint")).toBe("confirming_constraint");
+    expect(transition("confirming_constraint", "routing")).toBe("routing");
+    expect(transition("independent", "confirming_constraint")).toBe("confirming_constraint");
+  });
+
   it("requires both revisions to match", () => {
     expect(isCurrent({ conversationRevision: 2, deliberationRevision: 3 }, { conversationRevision: 2, deliberationRevision: 3 })).toBe(true);
     expect(isCurrent({ conversationRevision: 3, deliberationRevision: 3 }, { conversationRevision: 2, deliberationRevision: 3 })).toBe(false);

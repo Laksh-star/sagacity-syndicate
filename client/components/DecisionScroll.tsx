@@ -17,7 +17,7 @@ export function DecisionScroll({ scroll, mode, emptyCopy, onStartNew, councilVie
   return <section className={`scroll ${mode === "reconvening" ? "scroll--prior" : ""}`}>
     <div className="scroll-heading">
       <span className="eyebrow">{mode === "reconvening" ? "Previous verified decision · reconvening" : "Decision scroll"}</span>
-      <span className="confidence">{Math.round(scroll.confidence * 100)}% confidence</span>
+      <span className="confidence">{Math.round(scroll.confidence * 100)}% recommendation confidence</span>
     </div>
     <h2>{scroll.decision}</h2>
     <p className="scroll-summary">{scroll.rationale}</p>

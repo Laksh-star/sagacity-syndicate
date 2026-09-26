@@ -63,15 +63,17 @@ Keep `.env` local. It is ignored by git and the API key is never sent to the bro
 5. Native `session.delegation.created` is preferred. If GPT-Live does not emit it after a short grace period, an idempotent application fallback starts the same council path; no manual Convene click is required.
 6. The full Decision Scroll appears in the UI; Sutradhara gives a short executive briefing rather than reading it aloud.
 7. Ask “Why?”, ask for a specialist's view, or ask what would change the decision. These use the verified result without rerunning the council.
-8. State a genuinely changed fact to reconvene. The previous verified Scroll remains visible until its replacement is complete.
+8. State a genuinely changed fact. The app reflects its interpretation and waits for confirmation before reconvening. The previous verified Scroll remains visible until a confirmed replacement is complete.
 
 Voice uses browser WebRTC. The server creates the `gpt-live-1` session with client delegation. The browser aggregates transcript fragments into `VoiceTurn` records. Because the current Live protocol does not expose a completed-input-transcript event, releasing push-to-talk initiates finalization; the acknowledged `session.input_audio.muted` boundary plus a short transcript-settle window closes the user turn. A late delta within that utterance updates the same turn instead of creating an interruption.
 
 The delegation's `offset_ms` binds it to the user turn that caused it. That causal turn can never cancel its own council round. GPT-Live speech never changes application state: only native delegation, the readiness fallback, council events, and verified synthesis do. Only a later completed turn enters interruption materiality routing:
 
 - acknowledgements, status questions, and questions about the completed decision preserve the round;
-- confident changed constraints cancel/stale the active round and reconvene;
+- confident changed constraints enter a durable confirmation state; only confirmation cancels/stales active work and reconvenes;
 - ambiguous statements preserve work and prompt one brief clarification.
+
+For a material spoken correction, Sutradhara reflects the application's bounded interpretation— including old and new values when both are explicit—and waits for “yes,” “no,” or a restated constraint. A pending confirmation survives refresh. It does not advance `deliberationRevision`, cancel current work, or replace the authoritative Scroll. A precise typed correction plus the explicit reconvene action counts as confirmation because the application receives exact user-provided text.
 
 Push-to-talk also controls browser playback independently of council state. Pressing the control immediately suppresses Sutradhara audio, captures the active pointer so small movement outside the button cannot end the turn, keeps output suppressed through the user turn, and resumes only when a post-turn Sutradhara response begins. Recording stops once on deliberate release, browser cancellation, or lost pointer capture; the bounded `live.push_to_talk.stopped` diagnostic records which boundary occurred. Stopping speech never cancels council work by itself; only the completed-turn materiality path can invalidate a deliberation.
 
@@ -90,7 +92,7 @@ The newest authoritative Decision Scroll, its bounded Council Map trace, and its
 
 The browser also keeps a bounded history of the ten newest verified Scroll revisions. The **Decision workspace** can export any retained Scroll as Markdown and compares the initial and latest revision of the current decision field by field. Starting a new decision removes the current authoritative pointer but keeps this local history; **Clear older history** reduces it to the current Scroll. Neither store contains raw transcript, audio, or provider reasoning.
 
-When Live is connected, the correction field remains available. Submitting a **Precise typed correction** adds one completed user turn to the visible transcript and enters the same revision-safe reconvening path as a material spoken correction. It is not sent as a second independent council request.
+When Live is connected, the correction field remains available. Submitting a **Precise typed correction** adds one completed user turn to the visible transcript and explicitly confirms the changed fact before entering the revision-safe reconvening path. It is not sent as a second independent council request.
 
 ## Architecture
 
@@ -141,16 +143,17 @@ The `routing` state appears only during reconvening. Agent-card states are proje
 - Opinions: stance, 1–4 observations, recommendation, confidence, and up to three uncertainties.
 - Critiques: critic, target agents, up to two agreements, 1–3 challenges, revision advice, and severity.
 - Impact route: materiality, unique affected-agent subset, preserved fields, reason, and confidence.
-- Decision Scroll: the seven required fields with explicit string limits and confidence from 0 to 1.
+- Decision Scroll: the seven required fields with explicit string limits and recommendation confidence from 0 to 1. Until an evidence tool verifies key facts, the application deterministically caps that confidence at 0.85.
 - Council trace: three bounded contributions plus at most six directed critique edges; it excludes observations, uncertainties, raw payloads, and chain-of-thought.
 - Voice Brief: recommendation, reason, key tension, immediate next step, and optional reconvene trigger, with a 120-word hard ceiling.
 - Voice interruption assessment: materiality, optional normalized changed constraint, bounded reason, and confidence.
+- Constraint confirmation: bounded reflected change, optional previous/new values, interpretation confidence, conversation revision, and timestamp.
 
 The Agents API receives JSON Schema output constraints and the server validates again with Zod. Invalid output receives one repair turn, then fails visibly.
 
 ## Logging and privacy
 
-Each orchestration transition and bounded agent result is appended to `logs/deliberations.jsonl`. The client/server Live lifecycle writes bounded event metadata to `logs/live-events.jsonl`, including turn boundaries, delegation binding, revisions, phases, append acknowledgements, cancellation, and stale-result suppression. It does not log API keys, audio, raw deltas, or chain-of-thought. These files are ignored by git and may still contain bounded decision facts; delete or redact them before sharing an archive.
+Each orchestration transition and bounded agent result is appended to `logs/deliberations.jsonl`. The client/server Live lifecycle writes bounded event metadata to `logs/live-events.jsonl`, including turn boundaries, delegation binding, revisions, confirmation requested/accepted/rejected, phases, append acknowledgements, cancellation, and stale-result suppression. It does not log API keys, audio, raw deltas, or chain-of-thought. These files are ignored by git and may still contain bounded decision facts; delete or redact them before sharing an archive.
 
 Agents API runs additionally log stage and round latency, repair status, provider session IDs, and best-effort token usage. New provider sessions receive bounded trace metadata; cancellation events use stable idempotency keys. When an event stream fails after yielding a session ID, the runtime retrieves provider status before surfacing the uncertain failure rather than blindly retrying it.
 
@@ -166,6 +169,7 @@ For a voice debugging pass, run `npm run dev`, reproduce the issue, then inspect
 npm run dev        # Vite UI + Express server
 npm run typecheck  # TypeScript project checks
 npm test           # unit and orchestration tests
+npm run check:public-artifacts # reject provider/session IDs and key-shaped values in tracked docs
 npm run build      # production client build
 npm start          # serve production build on 127.0.0.1:8787
 ```
@@ -176,7 +180,7 @@ npm start          # serve production build on 127.0.0.1:8787
 - Mock mode verifies UI and orchestration semantics, not OpenAI account access.
 - Initial Agents API deliberation and Impact Router reconvening were live-tested on 2026-09-12. GPT-Live delegation, post-decision exploration, refresh persistence, explicit deadline reconvening, phase progress, playback suppression, and concise audible briefing were live-tested through 2026-09-15. The restart-safe `previousScroll` hydration path, pointer-capture boundary, decision-history persistence, and provider-generated Council Map were supervised with a real account on 2026-09-16. The provider-session recovery branch remains automated-test verified because the repaired live run did not encounter another broken stream.
 - Transcript events are fragments and can contain recognition errors. Turn completion uses the strongest available push-to-talk event boundary, not linguistic guessing.
-- A complete transcript can still contain a material recognition error such as “now” becoming “not.” A confirmation step for ambiguous high-impact corrections remains a recommended product improvement.
+- A complete transcript can still contain a material recognition error such as “now” becoming “not.” Material spoken corrections therefore pause in `confirming_constraint` until the user confirms or restates the application's interpretation.
 
 ## Documentation baseline
 

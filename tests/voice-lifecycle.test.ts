@@ -49,4 +49,13 @@ describe("VoiceCouncilLifecycle", () => {
       scroll,
     });
   });
+
+  it("keeps the last verified Scroll eligible while a confirmation is pending outside the lifecycle", () => {
+    const lifecycle = new VoiceCouncilLifecycle();
+    lifecycle.restoreVerifiedResult({ conversationRevision: 4, deliberationRevision: 2 }, scroll);
+    const pendingConversationRevision = 5;
+    expect(pendingConversationRevision).toBeGreaterThan(lifecycle.verifiedResult()!.revision.conversationRevision);
+    expect(lifecycle.verifiedResult()?.scroll).toEqual(scroll);
+    expect(lifecycle.activeRound()).toBeUndefined();
+  });
 });

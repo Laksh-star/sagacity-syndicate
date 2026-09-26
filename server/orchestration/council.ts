@@ -1,5 +1,6 @@
 import type { z } from "zod";
 import { createHash } from "node:crypto";
+import { calibrateRecommendationConfidence } from "../../shared/confidence.js";
 import {
   AgentNameSchema,
   CritiqueSchema,
@@ -269,7 +270,10 @@ export class CouncilOrchestrator {
       schema: DecisionScrollSchema,
       signal,
     });
-    return DecisionScrollSchema.parse(run.output);
+    // This council currently reasons from user-supplied context rather than an
+    // evidence tool. Keep recommendation confidence below the verified-fact
+    // band until evidence-aware deliberation is implemented.
+    return calibrateRecommendationConfidence(DecisionScrollSchema.parse(run.output));
   }
 
   private async startRun<T>(

@@ -194,13 +194,16 @@ A material change is a fact that could alter the recommendation, reasoning, risk
 
 When you state a material change:
 
-1. the UI changes to **Reconvening council**;
-2. it shows what changed;
-3. the application marks the old in-flight round stale and requests cancellation if necessary;
-4. the Impact Router chooses a selective or full rerun;
-5. the previous verified Scroll remains visible;
-6. only a complete, current synthesis replaces it;
-7. Sutradhara gives a new concise briefing.
+1. the UI changes to **Confirm before the council reconvenes**;
+2. it shows the interpreted change and, when available, the previous and new values;
+3. say **yes**, say **no**, restate the fact, or use the confirmation buttons;
+4. only a confirmed change marks old in-flight work stale and requests cancellation if necessary;
+5. the Impact Router chooses a selective or full rerun;
+6. the previous verified Scroll remains visible;
+7. only a complete, current synthesis replaces it;
+8. Sutradhara gives a new concise briefing.
+
+The confirmation survives a refresh. Confirmation confidence describes how confidently the application interpreted the changed constraint; the percentage on the Decision Scroll is recommendation confidence. They are deliberately different.
 
 If a statement is ambiguous—“That may not work”—the app preserves current work and asks one brief clarification rather than cancelling automatically.
 
@@ -211,6 +214,7 @@ If a statement is ambiguous—“That may not work”—the app preserves curren
 | **Talking / Hold to speak** | Voice session is active; the council has not necessarily started | Describe the decision or answer Sutradhara |
 | **Clarifying** | More decision context is needed | Answer the one focused question |
 | **Preparing the council** | Readiness succeeded; native delegation/fallback coordination is in progress | Wait briefly; optional **Send to council now** can bypass the grace period |
+| **Confirming constraint** | A material voice correction has been interpreted but is not yet authoritative | Confirm, reject, or restate the exact constraint; current council work and the prior Scroll remain intact |
 | **The council is deliberating** | Backend council work is active | Watch phases; ordinary interjections are safe |
 | **Synthesizing** | Independent and critique stages are complete | Wait for the verified Scroll |
 | **Completed** | A current, schema-validated Scroll is authoritative | Read it or ask follow-up questions |
@@ -228,7 +232,7 @@ The transcript shows turns, not raw recognition fragments:
 - while you are at the bottom, it follows the latest turn;
 - if you scroll upward, it preserves your position and shows **Jump to latest**.
 
-Recognition can still make mistakes. Restate an important number or constraint clearly if the transcript is wrong. In voice mode, the optional written-details control can supply an exact figure, name, or spelling that is easier to type.
+Recognition can still make mistakes. The application now reflects every material spoken correction before reconvening. Reject or restate it if an important word, number, direction, or constraint is wrong. In voice mode, the optional written-details control can supply an exact figure, name, or spelling that is easier to type.
 
 After a Scroll exists—or while the council is working—the **Precise typed correction** field is available even when voice remains connected. Use it for a factual change such as “The budget is ₹8 lakh, not ₹20 lakh.” Selecting **Reconvene** records one completed typed user turn and follows the same cancellation, revision, Impact Router, and stale-result safeguards as a spoken material change. Keep ordinary questions such as “Why?” in the voice conversation; they should not reconvene.
 

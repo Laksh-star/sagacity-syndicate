@@ -121,6 +121,17 @@ export const VoiceInterruptionAssessmentSchema = z.object({
 });
 export type VoiceInterruptionAssessment = z.infer<typeof VoiceInterruptionAssessmentSchema>;
 
+export const ConstraintConfirmationSchema = z.object({
+  changedConstraint: short(400),
+  confirmationQuestion: complete(500),
+  newValue: short(160).optional(),
+  previousValue: short(160).optional(),
+  interpretationConfidence: z.number().min(0).max(1),
+  conversationRevision: z.number().int().nonnegative(),
+  createdAt: z.number().int().nonnegative(),
+}).strict();
+export type ConstraintConfirmation = z.infer<typeof ConstraintConfirmationSchema>;
+
 export const VoiceInterruptionRequestSchema = z.object({
   utterance: short(1_000),
   currentContext: short(8_000),
@@ -157,6 +168,8 @@ export const LiveDiagnosticNameSchema = z.enum([
   "council.phase", "council.completed", "live.thinking.sent", "live.commentary.sent",
   "live.instructions.sent", "live.commentary.acknowledged", "live.thinking.acknowledged", "live.instructions.acknowledged", "live.interruption.received",
   "live.interruption.materiality", "council.cancel.requested", "council.stale_result.discarded",
+  "live.constraint_confirmation.requested", "live.constraint_confirmation.accepted",
+  "live.constraint_confirmation.rejected", "live.constraint_confirmation.replaced",
   "live.session.closed", "live.error",
   "live.push_to_talk.stopped",
   "live.playback.started", "live.playback.suppressed", "live.playback.resumed", "live.playback.stale_audio.discarded",
@@ -184,7 +197,7 @@ export const DeliberationRequestSchema = z.object({
 export type DeliberationRequest = z.infer<typeof DeliberationRequestSchema>;
 
 export const CouncilPhaseSchema = z.enum([
-  "idle", "clarifying", "ready", "routing", "independent", "cross_examining",
+  "idle", "clarifying", "confirming_constraint", "ready", "routing", "independent", "cross_examining",
   "synthesizing", "completed", "interrupted", "failed",
 ]);
 export type CouncilPhase = z.infer<typeof CouncilPhaseSchema>;
