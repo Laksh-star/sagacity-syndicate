@@ -5,30 +5,48 @@ import { fileURLToPath } from "node:url";
 import { DeliberationRequestSchema, LiveDiagnosticEventSchema, VoiceInterruptionRequestSchema, VoiceReadinessRequestSchema, type CouncilEvent } from "../shared/schemas.js";
 import { MockAgentRuntime } from "./agents/mock-runtime.js";
 import { OpenAIAgentRuntime } from "./agents/runtime.js";
+import { FoundryAgentRuntime } from "./agents/foundry-runtime.js";
 import { config } from "./config.js";
+import { attachFoundryVoice } from "./live/foundry-session.js";
 import { createLiveSession } from "./live/session.js";
 import { CouncilOrchestrator } from "./orchestration/council.js";
 import { VoiceMaterialityAssessor } from "./voice/materiality.js";
 import { VoiceReadinessAssessor } from "./voice/readiness.js";
+import { JsonlLogger } from "./logging/jsonl.js";
 import { LiveJsonlLogger } from "./logging/live-jsonl.js";
 import { recoverableDecisionHistory } from "./logging/decision-history.js";
+import { isAllowedBrowserOrigin } from "./origin-policy.js";
 
 const app = express();
 app.use(express.json({ limit: "64kb" }));
+// Hosted mode fails closed: Easy Auth verifies credentials at the platform edge;
+// this application independently restricts the authenticated principal to owner.
+if (process.env.REQUIRE_OWNER_AUTH === "true") {
+  if (!process.env.OWNER_PRINCIPAL_ID) throw new Error("OWNER_PRINCIPAL_ID is required for hosted owner-only access.");
+  app.use((request, response, next) => {
+    if (request.headers["x-ms-client-principal-id"] !== process.env.OWNER_PRINCIPAL_ID) {
+      response.status(403).json({ error: "Owner sign-in required." }); return;
+    }
+    next();
+  });
+}
 
 const runtime = config.mockCouncil
   ? new MockAgentRuntime()
-  : new OpenAIAgentRuntime(config.apiKey as string);
+  : config.councilProvider === "foundry"
+    ? new FoundryAgentRuntime(new OpenAI({ baseURL: config.foundryEndpoint, apiKey: config.foundryApiKey, maxRetries: 0 }))
+    : new OpenAIAgentRuntime(config.apiKey as string);
 const council = new CouncilOrchestrator(runtime, {
   council: config.councilModel,
   synthesis: config.synthesisModel,
 });
 const voiceMateriality = new VoiceMaterialityAssessor(runtime, config.councilModel);
 const voiceReadiness = new VoiceReadinessAssessor(runtime, config.councilModel);
+const logger = new JsonlLogger();
 const liveLogger = new LiveJsonlLogger();
 
 app.get("/api/health", (_request, response) => {
-  response.json({ ok: true, mode: config.mockCouncil ? "mock" : "live", liveEnabled: Boolean(config.apiKey) });
+  response.json({ ok: true, mode: config.mockCouncil ? "mock" : "live", liveEnabled: config.voiceProvider === "foundry" ? Boolean(config.foundryApiKey && config.foundryVoiceEndpoint) : Boolean(config.apiKey), voiceProvider: config.voiceProvider });
 });
 
 app.get("/api/decision-history", async (_request, response) => {
@@ -36,8 +54,12 @@ app.get("/api/decision-history", async (_request, response) => {
 });
 
 app.post("/api/live/session", async (request, response) => {
+  if (config.voiceProvider !== "openai") {
+    response.status(404).json({ error: "OpenAI voice transport is not active." });
+    return;
+  }
   const origin = request.headers.origin;
-  if (origin && !/^http:\/\/(localhost|127\.0\.0\.1):(5173|8787)$/.test(origin)) {
+  if (!isAllowedBrowserOrigin(origin, config.allowedOrigins)) {
     response.status(403).json({ error: "Unexpected request origin." });
     return;
   }
@@ -71,7 +93,20 @@ app.post("/api/voice/readiness-assessment", async (request, response) => {
     response.status(400).json({ error: "Invalid voice readiness request.", issues: parsed.error.issues });
     return;
   }
-  response.json(await voiceReadiness.assess(parsed.data));
+  const startedAt = Date.now();
+  const controller = new AbortController();
+  response.on("close", () => { if (!response.writableEnded) controller.abort(new Error("Readiness client superseded/disconnected.")); });
+  const log = (event: string, data: unknown) => logger.write({ deliberationId: "voice-intake", conversationRevision: 0, deliberationRevision: 0, event, data });
+  await log("voice.readiness.started", { request: parsed.data, startedAt });
+  let telemetry;
+  try {
+    const assessment = await voiceReadiness.assess(parsed.data, controller.signal, (value) => { telemetry = value; });
+    await log("voice.readiness.request", { request: parsed.data, assessment, startedAt, endedAt: Date.now(), durationMs: Date.now() - startedAt, telemetry });
+    if (!controller.signal.aborted) response.json(assessment);
+  } catch (error) {
+    await log("voice.readiness.cancelled", { startedAt, endedAt: Date.now(), durationMs: Date.now() - startedAt });
+    if (!controller.signal.aborted) response.status(500).json({ error: "Readiness assessment failed." });
+  }
 });
 
 app.post("/api/live/events", async (request, response) => {
@@ -126,6 +161,8 @@ if (process.env.NODE_ENV === "production") {
   app.get("/{*path}", (_request, response) => response.sendFile(resolve(root, "dist/client/index.html")));
 }
 
-app.listen(config.port, "127.0.0.1", () => {
+const server = app.listen(config.port, process.env.HOST ?? "127.0.0.1", () => {
   console.log(`Sagacity Syndicate server: http://127.0.0.1:${config.port} (${config.mockCouncil ? "mock" : "live"} council)`);
 });
+
+if (config.voiceProvider === "foundry") attachFoundryVoice(server);

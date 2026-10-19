@@ -1,19 +1,29 @@
 import { z } from "zod";
+import { hasMechanicalProseDefect } from "./text-quality.js";
 
 export const AgentNameSchema = z.enum(["forethought", "quickaction", "examiner"]);
 export type AgentName = z.infer<typeof AgentNameSchema>;
 
 const short = (max: number) => z.string().trim().min(1).max(max);
 const complete = (max: number) => short(max).regex(/[.!?]$/, "Write a complete sentence ending in punctuation.");
+const generatedComplete = (max: number) => complete(max)
+  .refine((value) => !hasMechanicalProseDefect(value), {
+    message: "Remove dangling connectors, punctuation collisions, and serialization debris.",
+    params: { repair: "mechanical_prose" },
+  })
+  .refine((value) => value.length <= Math.floor(max * 0.9), {
+    message: `Stay below ${Math.floor(max * 0.9)} characters so the sentence has safe completion headroom.`,
+    params: { repair: "bounded_complete_prose", maximum: Math.floor(max * 0.9) },
+  });
 
 export const SpecialistOpinionSchema = z.object({
   phase: z.literal("opinion"),
   agent: AgentNameSchema,
-  stance: complete(240),
-  observations: z.array(complete(220)).min(1).max(4),
-  recommendation: complete(300),
+  stance: generatedComplete(240),
+  observations: z.array(generatedComplete(220)).min(1).max(4),
+  recommendation: generatedComplete(300),
   confidence: z.number().min(0).max(1),
-  uncertainties: z.array(complete(180)).max(3),
+  uncertainties: z.array(generatedComplete(180)).max(3),
 }).strict();
 export type SpecialistOpinion = z.infer<typeof SpecialistOpinionSchema>;
 
@@ -21,9 +31,9 @@ export const CritiqueSchema = z.object({
   phase: z.literal("critique"),
   critic: AgentNameSchema,
   targetAgents: z.array(AgentNameSchema).min(1).max(2),
-  agreements: z.array(complete(180)).max(2),
-  challenges: z.array(complete(220)).min(1).max(3),
-  revisionAdvice: complete(280),
+  agreements: z.array(generatedComplete(180)).max(2),
+  challenges: z.array(generatedComplete(220)).min(1).max(3),
+  revisionAdvice: generatedComplete(280),
   severity: z.enum(["low", "medium", "high"]),
 }).strict();
 export type Critique = z.infer<typeof CritiqueSchema>;
@@ -63,6 +73,17 @@ export const DecisionScrollSchema = z.object({
 }).strict();
 export type DecisionScroll = z.infer<typeof DecisionScrollSchema>;
 
+/** Provider-facing Scroll schema. Historical Scrolls retain their original text. */
+export const DecisionScrollOutputSchema = z.object({
+  decision: generatedComplete(500),
+  rationale: generatedComplete(900),
+  forethought: generatedComplete(300),
+  quickaction: generatedComplete(300),
+  examiner: generatedComplete(300),
+  triggerToReconvene: generatedComplete(300),
+  confidence: z.number().min(0).max(1),
+}).strict();
+
 export const CouncilContributionSchema = z.object({
   agent: AgentNameSchema,
   openedWith: complete(300),
@@ -74,7 +95,8 @@ export type CouncilContribution = z.infer<typeof CouncilContributionSchema>;
 export const CouncilCritiqueEdgeSchema = z.object({
   critic: AgentNameSchema,
   target: AgentNameSchema,
-  challenge: complete(220),
+  // Derived directly from CritiqueSchema.revisionAdvice, which permits 280 characters.
+  challenge: complete(280),
   severity: z.enum(["low", "medium", "high"]),
 }).strict().superRefine((edge, ctx) => {
   if (edge.critic === edge.target) ctx.addIssue({ code: "custom", message: "A specialist cannot critique itself." });
@@ -142,6 +164,7 @@ export type VoiceInterruptionRequest = z.infer<typeof VoiceInterruptionRequestSc
 
 export const VoiceReadinessAssessmentSchema = z.object({
   action: z.enum(["clarify", "convene"]),
+  decisionQuestion: short(600).optional(),
   missingInformation: z.array(short(160)).max(2),
   reason: complete(240),
   confidence: z.number().min(0).max(1),
@@ -164,6 +187,7 @@ export type VoiceReadinessRequest = z.infer<typeof VoiceReadinessRequestSchema>;
 
 export const LiveDiagnosticNameSchema = z.enum([
   "live.session.started", "live.user_turn.started", "live.user_turn.completed",
+  "live.asr.final", "live.readiness.request_started", "live.readiness.request_ended", "live.response.created", "live.audio.started", "live.media.playing",
   "live.delegation.created", "live.delegation.fallback", "live.delegation.bound_to_revision", "live.readiness.assessed", "council.started",
   "council.phase", "council.completed", "live.thinking.sent", "live.commentary.sent",
   "live.instructions.sent", "live.commentary.acknowledged", "live.thinking.acknowledged", "live.instructions.acknowledged", "live.interruption.received",
@@ -183,6 +207,8 @@ export const LiveDiagnosticEventSchema = z.object({
   conversationRevision: z.number().int().nonnegative().optional(),
   deliberationRevision: z.number().int().nonnegative().optional(),
   detail: z.string().trim().max(500).optional(),
+  clientTimestamp: z.string().datetime().optional(),
+  clientMonotonicMs: z.number().nonnegative().optional(),
 }).strict();
 export type LiveDiagnosticEvent = z.infer<typeof LiveDiagnosticEventSchema>;
 

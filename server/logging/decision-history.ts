@@ -1,3 +1,5 @@
+import { pathToFileURL } from "node:url";
+import { resolve } from "node:path";
 import { readFile } from "node:fs/promises";
 import { z } from "zod";
 import { CouncilTraceSchema, DecisionScrollSchema } from "../../shared/schemas.js";
@@ -17,7 +19,7 @@ const ResultSchema = z.object({
 
 export async function recoverableDecisionHistory(
   limit = 10,
-  source = new URL("../../logs/deliberations.jsonl", import.meta.url),
+  source = process.env.LOG_DIRECTORY ? pathToFileURL(resolve(process.env.LOG_DIRECTORY, "deliberations.jsonl")) : new URL("../../logs/deliberations.jsonl", import.meta.url),
 ) {
   try {
     const raw = await readFile(source, "utf8");

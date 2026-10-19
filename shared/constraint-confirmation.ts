@@ -1,14 +1,14 @@
+import { acceptsCapturedDecision } from "./voice-intake.js";
 import { ConstraintConfirmationSchema, type ConstraintConfirmation, type VoiceInterruptionAssessment } from "./schemas.js";
 
 export type ConfirmationReply = "accept" | "reject" | "replace";
 
 const normalizedReply = (text: string) => text.toLowerCase().trim().replace(/[.!?,]+$/gu, "").replace(/\s+/gu, " ");
-const acceptReplies = new Set(["yes", "yeah", "yep", "correct", "that's right", "that is right", "right", "confirmed", "confirm", "exactly"]);
 const rejectReplies = new Set(["no", "nope", "incorrect", "that's wrong", "that is wrong", "not right", "wrong"]);
 
 export function classifyConfirmationReply(text: string): ConfirmationReply {
   const value = normalizedReply(text);
-  if (acceptReplies.has(value) || /^(yes|correct|right|confirmed)\b/iu.test(value)) return "accept";
+  if (acceptsCapturedDecision(text)) return "accept";
   if (rejectReplies.has(value) || /^(no|incorrect|wrong)\b/iu.test(value)) return "reject";
   return "replace";
 }

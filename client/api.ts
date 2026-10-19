@@ -60,11 +60,12 @@ export async function assessVoiceInterruption(request: VoiceInterruptionRequest)
   return VoiceInterruptionAssessmentSchema.parse(await response.json());
 }
 
-export async function assessVoiceReadiness(request: VoiceReadinessRequest): Promise<VoiceReadinessAssessment> {
+export async function assessVoiceReadiness(request: VoiceReadinessRequest, signal?: AbortSignal): Promise<VoiceReadinessAssessment> {
   const response = await fetch("/api/voice/readiness-assessment", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(request),
+    signal,
   });
   if (!response.ok) throw new Error(`Voice readiness assessment failed (${response.status}).`);
   return VoiceReadinessAssessmentSchema.parse(await response.json());

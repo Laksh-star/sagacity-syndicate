@@ -46,6 +46,13 @@ describe("bounded council trace", () => {
     expect(JSON.stringify(trace)).not.toContain("uncertainties");
   });
 
+  it("preserves revision advice up to its 280-character source limit", () => {
+    const advice = "A".repeat(279) + ".";
+    const longCritiques = Object.fromEntries(agents.map(agent => [agent, { ...critiques[agent], revisionAdvice: advice }])) as Record<AgentName, Critique>;
+    const trace = createCouncilTrace(opinions, longCritiques, scroll);
+    expect(trace.critiqueEdges.every(edge => edge.challenge === advice)).toBe(true);
+  });
+
   it("travels with the verified result without changing the Decision Scroll", () => {
     const trace = createCouncilTrace(opinions, critiques, scroll);
     const event = CouncilEventSchema.parse({ type: "council.result", mode: "initial", scroll, trace });

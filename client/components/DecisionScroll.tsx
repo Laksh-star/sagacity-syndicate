@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import type { DecisionScroll as DecisionScrollType } from "../../shared/schemas";
+import { decisionPresentation } from "../decision-presentation";
 
 export function DecisionScroll({ scroll, mode, emptyCopy, onStartNew, councilView }: { scroll?: DecisionScrollType; mode: "conversation" | "deliberating" | "completed" | "reconvening"; emptyCopy?: { title: string; description: string }; onStartNew?: () => void; councilView?: ReactNode }) {
   if (!scroll) return <section className="scroll scroll--empty">
@@ -14,12 +15,14 @@ export function DecisionScroll({ scroll, mode, emptyCopy, onStartNew, councilVie
     ["Examiner · hidden assumption", scroll.examiner],
     ["Trigger to reconvene", scroll.triggerToReconvene],
   ];
+  const presented = decisionPresentation(scroll.decision);
   return <section className={`scroll ${mode === "reconvening" ? "scroll--prior" : ""}`}>
     <div className="scroll-heading">
       <span className="eyebrow">{mode === "reconvening" ? "Previous verified decision · reconvening" : "Decision scroll"}</span>
       <span className="confidence">{Math.round(scroll.confidence * 100)}% recommendation confidence</span>
     </div>
-    <h2>{scroll.decision}</h2>
+    {presented.question && <p className="decision-question"><span>Decision being considered</span>{presented.question}</p>}
+    <h2>{presented.recommendation}</h2>
     <p className="scroll-summary">{scroll.rationale}</p>
     {councilView ?? <div className="perspective-summaries">
       {entries.slice(1, 4).map(([label, value]) => <article key={label}><strong>{label.split(" · ")[0]}</strong><p>{value}</p></article>)}

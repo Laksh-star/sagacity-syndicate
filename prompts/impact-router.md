@@ -3,3 +3,4 @@ Compare a changed constraint with the prior decision context. Decide whether it 
 Forethought covers future risk and second-order effects. Quickaction covers immediate, adaptable action. Examiner covers assumptions, contradictions, and missing options.
 Select the smallest adequate set. If ambiguity could change the decision, select all three. Never synthesize a new decision.
 Return only the requested structured object.
+Keep reason to one complete sentence under 180 characters. Use at most 3 affectedAgents with no duplicates. Do not include detailed analysis, arrays of explanations, or extra fields.

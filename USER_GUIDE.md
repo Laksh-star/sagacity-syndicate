@@ -28,14 +28,17 @@ The roles are:
 You need Node.js 22.6 or later.
 
 ```bash
-npm install
+npm ci
 cp .env.example .env
 npm run dev
 ```
 
 Open [http://localhost:5173](http://localhost:5173).
 
-The default mock mode demonstrates the council flow without an OpenAI API key. To use GPT-Live and the Agents API, put your key and model settings in `.env` as described in the [README](README.md). Restart the development server after editing `.env`.
+The default mock mode demonstrates the council flow without provider credentials.
+For a live run, select either OpenAI or Azure Foundry and configure its server-side
+credentials as described in the [README](README.md). Restart the development
+server after editing `.env`.
 
 Keep `.env` local. Never commit, paste into chat, or place an API key in a screenshot.
 
@@ -67,9 +70,11 @@ You do not need special commands such as “convene the council.” Sutradhara m
 
 ### Understand the handoff
 
-After a complete decision is captured, the app may briefly show **Preparing the council**. It is giving native GPT-Live delegation a short preference window. If that signal does not arrive, an application fallback starts the same council path automatically.
-
-**Send to council now** is an optional immediate override while preparation is pending. It is not a routine step.
+After a complete decision is captured, Sutradhara reads back the decision and
+asks whether it is correct. Answer with a clear **yes** to approve it, or restate
+the corrected decision. The council starts exactly once only after approval.
+This confirmation rule is identical for OpenAI and Foundry. OpenAI delegation
+metadata is retained when available, but it cannot bypass approval.
 
 The authoritative sign that work started is the UI changing to **The council is deliberating**. Sutradhara saying “I’ll put that to the council” is conversational acknowledgement, not proof that the backend started.
 
@@ -213,7 +218,7 @@ If a statement is ambiguous—“That may not work”—the app preserves curren
 | --- | --- | --- |
 | **Talking / Hold to speak** | Voice session is active; the council has not necessarily started | Describe the decision or answer Sutradhara |
 | **Clarifying** | More decision context is needed | Answer the one focused question |
-| **Preparing the council** | Readiness succeeded; native delegation/fallback coordination is in progress | Wait briefly; optional **Send to council now** can bypass the grace period |
+| **Decision captured / awaiting confirmation** | Readiness found a complete decision and Sutradhara has read it back | Confirm it exactly or restate the correction |
 | **Confirming constraint** | A material voice correction has been interpreted but is not yet authoritative | Confirm, reject, or restate the exact constraint; current council work and the prior Scroll remain intact |
 | **The council is deliberating** | Backend council work is active | Watch phases; ordinary interjections are safe |
 | **Synthesizing** | Independent and critique stages are complete | Wait for the verified Scroll |
@@ -238,17 +243,23 @@ After a Scroll exists—or while the council is working—the **Precise typed co
 
 ## 12. Common situations
 
-### Sutradhara says it delegated, but the cards do not move
+### Sutradhara reads back the decision, but the cards do not move
 
-Wait for **Preparing the council** to resolve. If no native handoff arrives, the automatic fallback should start the council. Use **Send to council now** only if you want to skip the remaining grace period.
+Confirm the captured decision with a clear **yes**. A conversational phrase such
+as “yep” may be understood by the voice model without satisfying the strict
+application approval parser; use the visible confirmation control if needed.
 
-If the UI never changes to deliberating, check `logs/live-events.jsonl` for readiness, delegation, and start events. Do not keep repeating “convene the council,” because repeated voice turns may add noise without fixing the underlying connection or provider error.
+If the UI still does not change to deliberating, inspect
+`logs/live-events.jsonl` for the completed approval turn, readiness result,
+delegation binding when using OpenAI, and `council.started`. Do not keep repeating
+“convene the council,” because repeated turns add noise without repairing a
+provider or configuration error.
 
 ### Voice remains on Connecting
 
 - Confirm microphone permission for `localhost` or `127.0.0.1`.
 - Try a current Chrome or Edge browser if an embedded browser does not expose microphone permission.
-- Confirm `OPENAI_API_KEY` and `OPENAI_LIVE_MODEL` in `.env`.
+- Confirm the selected `VOICE_PROVIDER` and its key, endpoint, and model settings in `.env`.
 - Restart `npm run dev` after changing environment variables.
 - Open `/api/health`; `liveEnabled` should be `true`.
 
@@ -257,10 +268,10 @@ The client reports a microphone-permission timeout instead of waiting indefinite
 ### Agent cards show Error
 
 - Read the visible error message.
-- Confirm `MOCK_COUNCIL=false` only when your OpenAI project has access and credits.
-- Verify `OPENAI_COUNCIL_MODEL` and `OPENAI_SYNTHESIS_MODEL`.
+- Confirm `MOCK_COUNCIL=false` only when the selected provider has access and credits.
+- Verify the OpenAI model names or Foundry deployment names for the selected `COUNCIL_PROVIDER`.
 - Inspect `logs/deliberations.jsonl` for the failing phase.
-- Try the text path to distinguish council/API trouble from GPT-Live trouble.
+- Try the text path to distinguish council/runtime trouble from voice-transport trouble.
 
 ### The council is taking longer than expected
 
@@ -279,7 +290,7 @@ The Scroll can succeed even if browser audio playback or a Live commentary event
 - `live.commentary.sent` and its acknowledgement in `logs/live-events.jsonl`;
 - browser console errors.
 
-An acknowledgement means GPT-Live accepted the event; it does not prove audible playback.
+An acknowledgement means the selected voice provider accepted the event; it does not prove audible playback.
 
 ## 13. Logs and debugging
 
@@ -296,8 +307,7 @@ For a healthy initial voice round, look for:
 live.session.started
 live.user_turn.completed
 live.readiness.assessed
-live.delegation.created OR live.delegation.fallback
-live.delegation.bound_to_revision
+live.delegation.created and live.delegation.bound_to_revision (OpenAI only, when emitted)
 council.started
 council.phase
 council.completed
@@ -316,16 +326,16 @@ See the [Architecture Guide](ARCHITECTURE.md) for the complete event and revisio
 - Raw transcript deltas are not logged.
 - Raw chain-of-thought is neither requested nor displayed.
 - Local logs can contain bounded decision facts and the final Decision Scroll.
-- Browser storage contains the latest authoritative Scroll, its council ID, round mode, and revisions. It does not contain the raw transcript or original decision prompt.
+- Browser storage contains the latest authoritative Scroll, bounded Council Map trace, council ID, round mode, revisions, up to ten verified history entries, and any bounded constraint confirmation awaiting your answer. It does not contain the raw transcript, original decision prompt, audio, or provider/delegation identifiers for the pending confirmation.
 - **Start a new decision** removes that browser-stored record.
 - Review, redact, or delete logs before sharing a repository archive or support bundle.
 
 ## 15. Current proof-of-concept limits
 
 - One local user; no sign-in, database, or multi-device history.
-- Mock mode proves UI and orchestration mechanics, not OpenAI account access.
+- Mock mode proves UI and orchestration mechanics, not provider account access.
 - Speech recognition may mishear names, currencies, and numbers.
-- Automated tests cannot prove microphone permission, WebRTC connectivity, actual client delegation, or audible speech.
+- Automated tests cannot prove microphone permission, provider media connectivity, OpenAI client-delegation delivery, or audible speech.
 - Model and protocol changes require a real-account browser smoke test.
 
 For the implementation design and diagrams, read the [Architecture Guide](ARCHITECTURE.md).

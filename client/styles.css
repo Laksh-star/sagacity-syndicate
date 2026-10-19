@@ -117,6 +117,8 @@ input { padding: 11px 12px; }
 .scroll--prior { border: 1px dashed #ad795f; opacity: .88; }
 .scroll h2 { max-width: 720px; margin: 8px 0 14px; font: 600 clamp(1.4rem, 2.4vw, 1.95rem)/1.12 "Newsreader", serif; color: #193d32; }
 .scroll-heading { display: flex; justify-content: space-between; gap: 12px; }.confidence { font-size: .72rem; color: #8e4f35; }
+.decision-question { max-width: 720px; margin: 15px 0 5px; color: #536a61; font-size: .78rem; line-height: 1.45; }
+.decision-question span { display: block; margin-bottom: 3px; color: #8c5139; font-size: .6rem; font-weight: 600; letter-spacing: .09em; text-transform: uppercase; }
 .scroll-summary { display: -webkit-box; max-width: 760px; overflow: hidden; color: #435a51; font-size: .86rem; line-height: 1.5; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .perspective-summaries { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 18px 0; }
 .perspective-summaries article { padding: 12px; border: 1px solid #c9bea6; border-radius: 12px; background: rgba(255,255,255,.24); }

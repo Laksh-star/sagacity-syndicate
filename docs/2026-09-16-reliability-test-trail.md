@@ -3,6 +3,8 @@
 Date: 16 September 2026  
 Scope: provider-stream failure diagnosis, pointer-capture behavior, server-restart continuity, persisted decision history, Council Map integrity, spoken material corrections, full reconvening, GPT-Live result briefing, and automated regression checks.
 
+> Historical evidence note: this report records the implementation and supervised evidence as of 16 September 2026. The recommended material-transcript confirmation step was subsequently implemented, along with confidence calibration and further privacy hardening. The current automated gate is 21 test files / 93 tests; the newest confirmation interaction still needs the focused real-microphone acceptance test identified as V8A in the current [Test Plan](../TEST_PLAN.md).
+
 This report collates a supervised real-account browser session with bounded evidence from `logs/live-events.jsonl`, `logs/deliberations.jsonl`, and the final rendered dashboard. It records both the unsuccessful attempts and the successful final retest. It does not contain API keys, transcript deltas, hidden reasoning, or private chain-of-thought.
 
 All log timestamps below are UTC. The local test time was UTC+05:30.
@@ -238,7 +240,7 @@ The strongest synthesis choice is the separation between:
 
 The main content caveat is the **98% confidence score**. The correction itself is highly certain, but demand, conversion, delivery effort, satisfaction, and reserve allocation remain unverified. A product-level confidence calibration rule should distinguish confidence in the interpreted constraint from confidence in the business outcome.
 
-## Remaining improvement: confirm high-impact transcript ambiguity
+## Improvement identified during the run: confirm high-impact transcript ambiguity
 
 This run proves that stable transcript aggregation and revision-safe handoff work. It also demonstrates that a complete transcript can still be semantically wrong when recognition changes a single high-impact word such as “now” to “not.”
 
@@ -270,7 +272,7 @@ git diff --check   PASS
 - The supervising user's observation is the evidence for what was actually spoken and heard. Logs establish intent and acknowledgement, not acoustic output.
 - The provider recovery implementation did not encounter another broken stream after the fix; its direct live recovery remains unexercised.
 - No late superseded council response occurred in this final window; stale-result suppression remains covered by automated tests.
-- Confidence calibration remains a product-quality opportunity.
+- At the time of this run, confidence calibration remained a product-quality opportunity. The current implementation caps confidence at 0.85 when decision-critical ambiguity remains unresolved.
 - Local JSONL logs remain ignored by Git. This curated report is the repository-safe evidence artifact.
 
 ## Final acceptance
@@ -289,4 +291,4 @@ persisted browser decision
 -> persisted history and revision map
 ```
 
-Status: **accepted for the current proof-of-concept**. The restart-continuity, pointer-capture, decision-history, and Council Map evidence gaps are closed. The remaining recommended improvement is an explicit confirmation step for ambiguous, high-impact speech transcriptions.
+Status at the time of this run: **accepted for the proof-of-concept**. The restart-continuity, pointer-capture, decision-history, and Council Map evidence gaps were closed. The explicit confirmation step recommended here is now implemented and covered automatically; its focused real-microphone acceptance test remains outstanding.
