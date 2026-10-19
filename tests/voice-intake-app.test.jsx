@@ -100,3 +100,20 @@ it('keeps an ambiguous post-decision duration change attached through yes until 
  await emit('confirm-duration','Yes.');expect(state.stream).toHaveBeenCalledTimes(2);
  await act(async()=>root.unmount());container.remove();
 });
+
+it('confirms every clause in one material turn and reconvenes exactly once', async()=>{
+ localStorage.clear();state.readiness.mockReset();state.materiality.mockReset();state.stream.mockReset();state.commentary=[];state.appends=[];
+ state.readiness.mockResolvedValue({action:'convene',missingInformation:[],reason:'Clear.',confidence:.9,decisionQuestion:'Should I prioritize LinkedIn or Upwork?'});
+ const scroll={decision:'Run a bounded channel pilot.',rationale:'A parallel test produces comparable evidence.',forethought:'Protect limited capacity.',quickaction:'Track qualified leads.',examiner:'Use one success threshold.',triggerToReconvene:'Review after the pilot.',confidence:.78};
+ state.stream.mockImplementation(async(_request,onEvent)=>{onEvent({type:'council.result',scroll,mode:'initial'});});
+ state.materiality.mockResolvedValue({material:true,changedConstraint:'Available effort is limited to five hours a week.',reason:'The weekly capacity changed.',confidence:.9});
+ const container=document.createElement('div');document.body.append(container);const root=createRoot(container);await act(async()=>root.render(<App/>));await act(async()=>Array.from(container.querySelectorAll('button')).find(b=>b.textContent?.includes('Start voice')).click());
+ const emit=async(id,text)=>act(async()=>{const turn={id,role:'user',text,complete:true};state.session.dispatchEvent(new CustomEvent('turn',{detail:turn}));state.session.dispatchEvent(new CustomEvent('turn.completed',{detail:turn}));});
+ await emit('decision','Should I prioritize LinkedIn or Upwork?');await emit('approve','yes');expect(state.stream).toHaveBeenCalledTimes(1);
+ const correction='Actually, I can spend only five hours a week and I want the test to be finished in four weeks.';
+ await emit('two-constraints',correction);
+ expect(container.textContent).toContain('five hours a week');expect(container.textContent).toContain('finished in four weeks');expect(state.stream).toHaveBeenCalledTimes(1);
+ await emit('confirm-both','yes');
+ expect(state.stream).toHaveBeenCalledTimes(2);expect(state.stream.mock.calls[1][0].changedConstraint).toBe(correction);
+ await act(async()=>root.unmount());container.remove();
+});

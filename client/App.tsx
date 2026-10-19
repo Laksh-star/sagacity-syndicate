@@ -6,7 +6,7 @@ import type {
 } from "../shared/schemas";
 import { classifyConfirmationReply, confirmationPrompt, createConstraintConfirmation } from "../shared/constraint-confirmation";
 import { createCouncilStartedCommentary, createCouncilThinkingContext, createVoiceBrief, createVoiceCommentary } from "../shared/voice";
-import { classifyLocalVoiceIntent, interruptionAction, obviousMaterialAssessment, obviousNonMaterialAssessment } from "../shared/voice-policy";
+import { classifyLocalVoiceIntent, interruptionAction, obviousMaterialAssessment, obviousNonMaterialAssessment, preserveCompletedMaterialTurn } from "../shared/voice-policy";
 import { assessVoiceInterruption, assessVoiceReadiness, interruptDeliberation, recordLiveDiagnostic, recoverDecisionHistory, streamDeliberation } from "./api";
 import { AgentCard } from "./components/AgentCard";
 import { CouncilMap } from "./components/CouncilMap";
@@ -556,6 +556,7 @@ export default function App() {
         phase: active ? "deliberating" : "completed",
         currentScroll: scrollRef.current,
       });
+      assessment = preserveCompletedMaterialTurn(turn.text, assessment);
     } catch {
       assessment = { material: false, reason: "The change is ambiguous, so current work is preserved pending clarification.", confidence: 0 };
     }

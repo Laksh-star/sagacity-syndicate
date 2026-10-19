@@ -60,6 +60,23 @@ export function obviousMaterialAssessment(text: string): VoiceInterruptionAssess
   };
 }
 
+/**
+ * A materiality model may normalize a completed turn too aggressively and keep
+ * only its first material clause. For a normal completed user turn, preserve
+ * the bounded verbatim wording so every stated constraint reaches the
+ * confirmation gate. Synthetic clarification prompts keep the model's merged
+ * interpretation instead of exposing their application labels to the user.
+ */
+export function preserveCompletedMaterialTurn(
+  text: string,
+  assessment: VoiceInterruptionAssessment,
+): VoiceInterruptionAssessment {
+  if (!assessment.material || !assessment.changedConstraint) return assessment;
+  const completedTurn = text.trim().replace(/\s+/gu, " ");
+  if (!completedTurn || completedTurn.length > 400 || /^Possible changed constraint:/iu.test(completedTurn)) return assessment;
+  return { ...assessment, changedConstraint: completedTurn };
+}
+
 export function interruptionAction(assessment: VoiceInterruptionAssessment): InterruptionAction {
   if (assessment.material && assessment.changedConstraint && assessment.confidence >= 0.65) return "reconvene";
   if (assessment.material || assessment.confidence < 0.65) return "clarify";
