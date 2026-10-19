@@ -79,7 +79,9 @@ export class FoundryVoiceTransport implements VoiceTransport {
     if (this.ready) this.send({ type: "response.cancel", event_id: crypto.randomUUID() });
   }
 
-  endTalking(): void {}
+  endTalking(): void {
+    if (this.ready) this.send({ type: "input_audio_buffer.commit", event_id: crypto.randomUUID() });
+  }
 
   append(kind: VoiceAppendKind, content: string, _delegationId: string | null): string {
     const eventId = crypto.randomUUID();

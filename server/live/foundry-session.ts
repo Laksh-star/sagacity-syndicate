@@ -6,6 +6,19 @@ import { spokenConfirmationQuestion } from "./spoken-confirmation.js";
 import { loadPrompt } from "../prompts.js";
 import { isAllowedBrowserOrigin } from "../origin-policy.js";
 
+const FOUNDRY_CONTROL_EVENTS = new Set([
+  "response.create",
+  "response.cancel",
+  "conversation.item.create",
+  "conversation.item.truncate",
+  "input_audio_buffer.commit",
+  "input_audio_buffer.clear",
+]);
+
+export function isAllowedFoundryControlEvent(type: string): boolean {
+  return FOUNDRY_CONTROL_EVENTS.has(type);
+}
+
 /** Keeps permanent credentials on the server. The browser receives only events/SDP.
  * One upstream control connection per browser. Disconnect closes billable session.
  */
@@ -61,9 +74,12 @@ async function connect(downstream: WebSocket): Promise<void> {
           modalities: ["text", "audio"], instructions,
           voice: { type: "azure-standard", name: "en-US-Ava:DragonHDLatestNeural" },
           input_audio_transcription: { model: "azure-speech" },
-          turn_detection: { type: "server_vad", create_response: false, interrupt_response: true },
+          // Push-to-talk owns the turn boundary. The client commits exactly once
+          // on release so disabling the media track cannot strand an utterance
+          // before Voice Live has observed a VAD silence tail.
+          turn_detection: null,
         } }));
-      } else if (["response.create", "response.cancel", "conversation.item.create", "conversation.item.truncate", "input_audio_buffer.clear"].includes(event.type)) {
+      } else if (isAllowedFoundryControlEvent(event.type)) {
         // Responses-level instructions replace session instructions on this service.
         // Always retain the moderator contract when the app supplies a spoken directive.
         if (event.type === "response.create") {

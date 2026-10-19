@@ -28,6 +28,10 @@ export class LiveVoiceSession extends EventTarget {
   private readonly pendingDelegations = new Map<string, LiveDelegation[]>();
   private userSettleTimer?: ReturnType<typeof setTimeout>;
   private assistantSettleTimer?: ReturnType<typeof setTimeout>;
+  private microphoneContext?: AudioContext;
+  private microphoneAnalyser?: AnalyserNode;
+  private microphoneProbeTimer?: ReturnType<typeof setInterval>;
+  private microphonePeak = 0;
 
   constructor(private readonly transportFactory: VoiceTransportFactory = createVoiceTransport) {
     super();
@@ -52,8 +56,9 @@ export class LiveVoiceSession extends EventTarget {
 
   setTalking(active: boolean): void {
     this.holding = active;
-    this.stream?.getAudioTracks().forEach((track) => { track.enabled = active; });
     if (active) {
+      this.stream?.getAudioTracks().forEach((track) => { track.enabled = true; });
+      this.startMicrophoneProbe();
       const action = this.transport?.beginTalking() ?? { completeCurrentUserTurn: true };
       this.emitPlayback(this.playback?.interrupt() ?? "none");
       this.clearUserSettle();
@@ -65,6 +70,8 @@ export class LiveVoiceSession extends EventTarget {
       } }));
       this.transport?.activateTalking();
     } else if (this.ready) {
+      this.stopMicrophoneProbe();
+      this.stream?.getAudioTracks().forEach((track) => { track.enabled = false; });
       const activeTurn = [...this.turns.list()].reverse().find((turn) => turn.role === "user" && !turn.complete);
       this.transport?.endTalking(activeTurn?.id);
       this.scheduleUserCompletion(USER_TRANSCRIPT_SETTLE_MS);
@@ -90,6 +97,11 @@ export class LiveVoiceSession extends EventTarget {
     this.completeUserTurn();
     this.completeAssistantTurn();
     this.stream?.getTracks().forEach((track) => track.stop());
+    if (this.microphoneProbeTimer) clearInterval(this.microphoneProbeTimer);
+    this.microphoneProbeTimer = undefined;
+    void this.microphoneContext?.close().catch(() => undefined);
+    this.microphoneContext = undefined;
+    this.microphoneAnalyser = undefined;
     this.transport?.close();
     this.transport = undefined;
     this.peer?.close();
@@ -281,5 +293,38 @@ export class LiveVoiceSession extends EventTarget {
       if (timeout) clearTimeout(timeout);
       if (timedOut) void request.then((lateStream) => lateStream.getTracks().forEach((track) => track.stop())).catch(() => undefined);
     }
+  }
+
+  private startMicrophoneProbe(): void {
+    if (!this.stream || typeof AudioContext === "undefined") return;
+    try {
+      this.microphoneContext ??= new AudioContext();
+      if (!this.microphoneAnalyser) {
+        this.microphoneAnalyser = this.microphoneContext.createAnalyser();
+        this.microphoneAnalyser.fftSize = 512;
+        this.microphoneContext.createMediaStreamSource(this.stream).connect(this.microphoneAnalyser);
+      }
+      void this.microphoneContext.resume();
+      this.microphonePeak = 0;
+      if (this.microphoneProbeTimer) clearInterval(this.microphoneProbeTimer);
+      const samples = new Uint8Array(this.microphoneAnalyser.fftSize);
+      this.microphoneProbeTimer = setInterval(() => {
+        this.microphoneAnalyser?.getByteTimeDomainData(samples);
+        for (const sample of samples) this.microphonePeak = Math.max(this.microphonePeak, Math.abs(sample - 128) / 128);
+      }, 50);
+    } catch {
+      // The probe is diagnostic only and must never block voice capture.
+    }
+  }
+
+  private stopMicrophoneProbe(): void {
+    if (this.microphoneProbeTimer) clearInterval(this.microphoneProbeTimer);
+    this.microphoneProbeTimer = undefined;
+    const track = this.stream?.getAudioTracks()[0];
+    this.dispatchEvent(new CustomEvent("diagnostic", { detail: {
+      event: "live.microphone.capture",
+      sessionId: this.sessionId,
+      detail: `peak=${this.microphonePeak.toFixed(4)}; readyState=${track?.readyState ?? "missing"}; muted=${track?.muted ?? "unknown"}`,
+    } }));
   }
 }

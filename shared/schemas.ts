@@ -186,7 +186,7 @@ export const VoiceReadinessRequestSchema = z.object({
 export type VoiceReadinessRequest = z.infer<typeof VoiceReadinessRequestSchema>;
 
 export const LiveDiagnosticNameSchema = z.enum([
-  "live.session.started", "live.user_turn.started", "live.user_turn.completed",
+  "live.session.started", "live.user_turn.started", "live.user_turn.completed", "live.microphone.capture",
   "live.asr.final", "live.readiness.request_started", "live.readiness.request_ended", "live.response.created", "live.audio.started", "live.media.playing",
   "live.delegation.created", "live.delegation.fallback", "live.delegation.bound_to_revision", "live.readiness.assessed", "council.started",
   "council.phase", "council.completed", "live.thinking.sent", "live.commentary.sent",

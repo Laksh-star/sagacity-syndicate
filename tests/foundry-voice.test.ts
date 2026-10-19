@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { moderatedFoundryResponse } from "../server/live/foundry-session.js";
+import { isAllowedFoundryControlEvent, moderatedFoundryResponse } from "../server/live/foundry-session.js";
 import { FoundryVoiceTransport } from "../client/voice/foundry-transport.js";
 import { LiveVoiceSession } from "../client/voice/live-session.js";
 import { LivePlaybackController } from "../client/voice/playback-controller.js";
@@ -21,6 +21,15 @@ function setup() {
   return { session, transport, sent, handle, output };
 }
 describe("Foundry voice adapter", () => {
+  it("commits the audio buffer exactly once when push-to-talk is released", () => {
+    const { session, sent } = setup();
+    session.setTalking(true);
+    session.setTalking(false);
+
+    expect(sent.filter((event) => event.type === "input_audio_buffer.commit")).toHaveLength(1);
+    expect(isAllowedFoundryControlEvent("input_audio_buffer.commit")).toBe(true);
+  });
+
   it("waits for item acknowledgement before briefing, never speaks prompt text as a script", () => {
     const { session, sent, handle } = setup(); const acks: unknown[] = [];
     session.addEventListener("append.acknowledged", (event) => acks.push((event as CustomEvent).detail));
