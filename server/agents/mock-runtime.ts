@@ -40,8 +40,8 @@ export class MockAgentRuntime implements AgentRuntime {
       const accumulated = [parsed.currentContext, ...(parsed.completedUserTurns ?? [])].join(" ").trim();
       const ready = /\b(should|whether|decid|choose|move|buy|take|accept|leave|start|convene|council)\b/iu.test(accumulated) && accumulated.length >= 24;
       return ready
-        ? { action: "convene", missingInformation: [], reason: "The accumulated context identifies a decision that the council can analyze.", confidence: 0.9 }
-        : { action: "clarify", missingInformation: ["the decision or choice to examine"], reason: "The decision itself is not yet clear enough to convene the council.", confidence: 0.86 };
+        ? { action: "convene", decisionQuestion: parsed.latestTurn?.slice(0, 600) || "What decision should the council examine?", missingInformation: [], reason: "The accumulated context identifies a decision that the council can analyze.", confidence: 0.9 }
+        : { action: "clarify", decisionQuestion: null, missingInformation: ["the decision or choice to examine"], reason: "The decision itself is not yet clear enough to convene the council.", confidence: 0.86 };
     }
     if (lower.includes("voice interruption materiality")) {
       const parsed = JSON.parse(input) as { utterance?: string };

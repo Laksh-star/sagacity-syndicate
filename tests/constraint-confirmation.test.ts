@@ -51,7 +51,7 @@ describe("material constraint confirmation", () => {
   });
 
   it("recognizes acceptance, rejection, and a replacement statement", () => {
-    expect(classifyConfirmationReply("Yes, correct.")).toBe("accept");
+    expect(classifyConfirmationReply("Yes, correct.")).toBe("replace");
     expect(classifyConfirmationReply("No, that is wrong.")).toBe("reject");
     expect(classifyConfirmationReply("The deadline is Friday instead.")).toBe("replace");
   });
@@ -65,3 +65,5 @@ describe("material constraint confirmation", () => {
     expect(loadPendingConstraint(storage)).toBeUndefined();
   });
 });
+
+it("requires the same unqualified acceptance as initial capture", () => { for (const text of ["yes, but the budget changed", "correct, except Friday", "yes and add research", "yes, correct.", "right now", "confirmed with one change"]) expect(classifyConfirmationReply(text)).toBe("replace"); for (const text of ["yes", "Yeah!", "correct.", "go ahead", "that is right"]) expect(classifyConfirmationReply(text)).toBe("accept"); });

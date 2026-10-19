@@ -3,11 +3,12 @@
 ## Voice handoff regression test
 
 1. Select **Speak with Sutradhara**, start voice, and state a complete decision without entering written context.
-2. Release the control and confirm the empty panel moves through **Decision captured** and **Preparing the council**.
-3. Do not select any manual Convene control. Confirm the UI reaches **The council is deliberating** within the readiness and native-delegation grace path.
-4. Inspect `logs/live-events.jsonl`. Confirm one `live.readiness.assessed` event and exactly one effective start path: native `live.delegation.created`, fallback `live.delegation.fallback`, or native binding to an already-started fallback. Confirm only one `council.started` for that revision.
-5. After completion, confirm the Decision Scroll renders and Sutradhara gives a concise briefing. Confirm send and acknowledgement events are correlated where the provider returns acknowledgements.
-6. Repeat with a deliberately incomplete opening such as “I need help deciding.” Confirm the app remains in clarification and does not falsely show deliberating.
+2. Release the control and confirm Sutradhara reads back one captured decision.
+3. Confirm that no council starts before approval. Say a clear **yes** or use the visible confirmation control.
+4. Confirm the UI reaches **The council is deliberating** exactly once. On OpenAI, a confirmation-turn delegation takes precedence over a stored decision-turn delegation; on Foundry, no synthetic delegation is required.
+5. Inspect `logs/live-events.jsonl`. Confirm one readiness result, one completed approval turn, at most one effective delegation binding, and exactly one `council.started` for that revision.
+6. After completion, confirm the Decision Scroll renders and Sutradhara gives a concise briefing. Confirm send and acknowledgement events are correlated where the provider returns acknowledgements.
+7. Repeat with a deliberately incomplete opening such as “I need help deciding.” Confirm the app remains in clarification and does not falsely show deliberating.
 
 ## Input-mode and transcript UX
 
@@ -17,14 +18,18 @@
 4. Scroll upward, add another turn, and confirm the reader's position is preserved and **Jump to latest** appears.
 5. Select **Jump to latest** and confirm the newest turn is visible.
 
-This plan separates deterministic automated checks, mock browser testing, live Agents API testing, and real GPT-Live voice validation. Do not treat mock-mode success as proof of account access, microphone behavior, or audible output.
+This plan separates deterministic automated checks, mock browser testing, live
+council-runtime testing, and real voice validation for both supported providers.
+Do not treat mock-mode success as proof of account access, microphone behavior,
+provider transport behavior, or audible output.
 
 ## 1. Prerequisites
 
 - Node.js 22.6 or later.
-- Dependencies installed with `npm install`.
+- Dependencies installed with `npm ci`.
 - A clean local `.env` copied from `.env.example`.
-- For live testing, an OpenAI project with access to the configured Live and Agents API models.
+- For OpenAI live testing, a project with access to the configured GPT-Live and Agents API models.
+- For Foundry live testing, a resource key, Responses-compatible endpoint and deployments, and Voice Live endpoint/model.
 - Chrome or Edge with microphone access allowed for the local application.
 
 Never paste an API key into screenshots, terminal output, issue reports, or committed files.
@@ -105,9 +110,12 @@ Expected:
 - The Impact Router reports selective, full, or preserved handling.
 - Only the newly completed revision replaces the prior Scroll.
 
-## 4. Live Agents API test
+## 4. Live council-runtime test
 
-Set `MOCK_COUNCIL=false`, configure the documented model environment variables, restart the application, and repeat M2–M4.
+Set `MOCK_COUNCIL=false`, select one `COUNCIL_PROVIDER`, configure that
+provider's documented model or deployment environment variables, restart the
+application, and repeat M2–M4. Run this section once for OpenAI and once for
+Foundry.
 
 Expected:
 
@@ -127,9 +135,11 @@ curl -sS -X POST http://127.0.0.1:8787/api/voice/interruption-assessment \
 
 Expected: `material` is `true`, `changedConstraint` is concise, and confidence is between 0 and 1.
 
-## 5. Real GPT-Live voice test
+## 5. Real provider voice test
 
-Use a normal browser with microphone permission. Keep developer tools and `logs/live-events.jsonl` available.
+Select the matching `VOICE_PROVIDER`, use a normal browser with microphone
+permission, and keep developer tools plus `logs/live-events.jsonl` available.
+Run V1–V9 once with OpenAI and once with Foundry.
 
 ### V1 — Connection and one complete turn
 
@@ -142,14 +152,17 @@ Expected:
 - The transcript shows one user turn rather than many delta rows.
 - Local diagnostics contain `live.session.started`, one `live.user_turn.started`, and one `live.user_turn.completed`.
 
-### V2 — Delegation-causing trailing delta
+### V2 — Approval and provider handoff
 
 1. Speak a decision naturally, including a small pause before the last phrase.
-2. Release and let Sutradhara delegate.
+2. Release and wait for the captured-question read-back.
+3. Confirm that no council starts yet, then say **yes**.
 
 Expected:
 
-- `live.delegation.created` is bound to the causal user turn.
+- Exactly one council starts after approval.
+- With OpenAI, any `live.delegation.created` is bound to its causal turn and the documented confirmation-turn precedence applies.
+- With Foundry, no native delegation event is required or synthesized.
 - A delayed fragment updates that same turn.
 - No cancellation is requested for that causal turn.
 - The council reaches synthesis and completion.
@@ -304,7 +317,7 @@ Expected:
 - Starting voice creates a new Live media session.
 - **Start a new decision** removes the stored result and returns the UI to an empty conversation state.
 
-### F6 — Agents API stream uncertainty
+### F6 — OpenAI Agents API stream uncertainty
 
 With a mocked event stream, emit a provider session ID and then fail the connection.
 
@@ -314,6 +327,18 @@ Expected:
 - The failure log includes the bounded status and does not blindly duplicate the turn.
 - Cancellation events include stable idempotency keys.
 - Successful runs produce per-stage `agent.run` records and one aggregate `council.telemetry` record.
+
+### F6A — Foundry background-response uncertainty
+
+With the Foundry runtime mocked, leave a response `in_progress`, then exercise
+the bounded poll, terminal failure, and cancellation paths.
+
+Expected:
+
+- the runtime never treats `in_progress` as a completed result;
+- polling ends at the configured bound;
+- terminal errors remain provider-neutral at the shared UI boundary;
+- schema repair and bounded-output recovery cannot bypass local Zod validation.
 
 ### F7 — Server-restart continuity
 
@@ -354,6 +379,25 @@ Capture the following without secrets or private decision content:
 - Screenshot of reconvening with the prior Scroll preserved.
 - Bounded excerpts from both JSONL logs showing revisions and lifecycle event names.
 - Manual note of spoken briefing duration and whether each follow-up caused a rerun.
-- Output of `npm run check:public-artifacts`; never paste Live, provider-session, or delegation identifiers into tracked reports.
+- Output of `npm run check:public-candidate`; never paste Live, provider-session, response, or delegation identifiers into tracked reports.
 
-The release passes only when automated checks pass, text-first behavior remains intact, the normal-browser voice sequence passes V1–V9, F7 and F8 have real-account evidence, and no stale round can render or speak.
+## 8. Public migration and hosted-origin gate
+
+After the automated candidate passes:
+
+1. Run one abbreviated initial decision plus one material reconvening with OpenAI.
+2. Repeat with Foundry.
+3. Through the intended HTTPS deployment, confirm the configured origin can
+   negotiate voice and an unapproved origin receives 403.
+4. Confirm credentials appear only in server settings and never in the built
+   client, tracked files, screenshots, or validation report.
+5. Keep the former private port as rollback until the hosted candidate passes.
+
+The post-migration microphone run may reuse one short decision scenario; it does
+not need to repeat every historical acceptance case.
+
+The release passes only when automated checks pass, text-first behavior remains
+intact, both provider adapters pass the abbreviated real-browser sequence, the
+hosted-origin boundary passes, and no stale round can render or speak. Historical
+full-flow evidence remains useful, but it does not replace the short
+post-migration check against the exact public candidate.

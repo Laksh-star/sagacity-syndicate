@@ -3,6 +3,8 @@
 Date: 13 September 2026  
 Topic: Introducing an AI assistant through WhatsApp in a boutique consulting company with approximately 8–10 people and internal resistance.
 
+> Historical comparison note: these are the authoritative outputs from the 13 September validation session. Subsequent releases added bounded local decision history, Markdown export, revision comparison, the Council Map, restart-safe context hydration, material-constraint confirmation, and confidence calibration. This document intentionally preserves the original outputs and timings.
+
 This record contains the two authoritative Decision Scrolls from the final validation session. The first decision was gathered conversationally through GPT-Live. The second was submitted through the text-first interface after a browser refresh.
 
 The local privacy model does not persist complete raw user transcripts or audio. Consequently, this comparison records the verified council outputs and lifecycle metadata, not a verbatim reconstruction of either input.

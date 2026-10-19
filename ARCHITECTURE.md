@@ -1,13 +1,28 @@
 # Sagacity Syndicate Architecture
 
-Sagacity Syndicate is a local-first, voice-capable decision aid. It combines two OpenAI systems without giving them overlapping authority:
+Sagacity Syndicate is a local-first, voice-capable decision aid with one
+application-owned council and two supported provider configurations:
 
-- **GPT-Live-1** is Sutradhara, the low-latency conversational moderator.
-- **OpenAI Agents API sessions** run the decision council and return bounded, validated artifacts.
+- **OpenAI:** GPT-Live is Sutradhara and OpenAI Agents API sessions execute the
+  council roles.
+- **Azure Foundry:** Voice Live is Sutradhara and an Azure
+  Responses-compatible endpoint executes application-owned council personas.
 
-The central design rule is simple: **conversation is not decision authority**. GPT-Live can clarify, delegate, report verified status, and explain a completed result. Only the council orchestration path can create or revise the Decision Scroll.
+The central design rule is provider-independent: **conversation is not decision
+authority**. Sutradhara may clarify, acknowledge verified status, and explain a
+completed result. Only the council orchestration path can create or revise the
+Decision Scroll.
 
-This document describes the implementation in this repository. The OpenAI protocol references were checked on 13 September 2026 against the official [GPT-Live client delegation guide](https://developers.openai.com/api/docs/guides/live-delegation?delegation-mode=client), [GPT-Live WebRTC guide](https://developers.openai.com/api/docs/guides/voice-webrtc?api=live), and [Agents API session reference](https://developers.openai.com/api/reference/typescript/resources/beta/subresources/agents/subresources/sessions/methods/create).
+Provider selection occurs at the system edges. `LiveVoiceSession` contains
+shared turn and playback logic behind a `VoiceTransport` interface, while
+`CouncilOrchestrator` depends only on `AgentRuntime`. The state machine,
+revisions, bounded schemas, Scroll authority, Impact Router, and UI projections
+do not branch on provider.
+
+The OpenAI protocol sections reference the official GPT-Live and Agents API
+contracts checked during the original implementation. Foundry protocol and
+behavioral differences are documented in
+[Provider differences](docs/PROVIDER_DIFFERENCES.md).
 
 ## 1. System at a glance
 
@@ -31,13 +46,13 @@ flowchart LR
         LOG[Local JSONL diagnostics]
     end
 
-    subgraph O[OpenAI]
-        GL[GPT-Live-1 / Sutradhara]
-        FT[Forethought session]
-        QA[Quickaction session]
-        EX[Examiner session]
-        SY[Synthesis session]
-        IR[Impact Router session]
+    subgraph P[Selected providers]
+        GL[OpenAI GPT-Live or Foundry Voice Live]
+        FT[Forethought runtime call]
+        QA[Quickaction runtime call]
+        EX[Examiner runtime call]
+        SY[Synthesis runtime call]
+        IR[Impact Router runtime call]
     end
 
     U <-->|speech and audio| UI
@@ -69,18 +84,20 @@ There are two application entry paths but only one council:
 
 | Path | Intake | How deliberation starts | Result |
 | --- | --- | --- | --- |
-| Voice | GPT-Live conversation and completed `VoiceTurn` records | Native client delegation or an idempotent application fallback | Decision Scroll in the UI plus a short spoken briefing |
+| Voice | Provider voice conversation and completed `VoiceTurn` records | Explicit approval through the application handoff gate | Decision Scroll in the UI plus a short spoken briefing |
 | Text | Decision Context form | User selects **Convene the council** | The same Decision Scroll schema in the UI |
 
 ## 2. Responsibility boundaries
 
-### GPT-Live-1: conversational layer
+### Live voice: conversational layer
 
-GPT-Live runs over browser WebRTC. Sutradhara can:
+Sutradhara runs over the selected browser voice transport. OpenAI uses a direct
+WebRTC session; Foundry uses WebRTC media plus a server WebSocket control relay.
+Sutradhara can:
 
 - conduct a natural voice conversation;
 - ask only the clarification needed to identify the decision;
-- request client delegation;
+- request client delegation when the selected provider supports it;
 - acknowledge authoritative application status;
 - paraphrase a verified Voice Brief;
 - answer follow-up questions from bounded, verified council context.
@@ -92,7 +109,12 @@ Sutradhara cannot:
 - infer that synthesis succeeded before the application confirms it;
 - expose raw agent output or private reasoning.
 
-The server creates the Live session with `delegation: { type: "client" }`. Under the documented client-delegation model, the application chooses and runs the backend. A Live delegation event is therefore a handoff signal, not a council result.
+For OpenAI, the server creates the Live session with
+`delegation: { type: "client" }`. Under the documented client-delegation model,
+the application chooses and runs the backend. A Live delegation event is
+therefore metadata attached to an approved handoff, not a council result or an
+authorization to bypass confirmation. Foundry does not synthesize this event;
+the shared application approval path starts the same council directly.
 
 ### Council: decision layer
 
@@ -107,7 +129,7 @@ The server creates the Live session with `delegation: { type: "client" }`. Under
 
 ### React application: control plane
 
-`client/App.tsx` joins the two layers. It owns product mode, completed-turn processing, readiness and materiality requests, native/fallback handoff coordination, captured revision checks, the current authoritative Scroll, and what verified context is appended to GPT-Live.
+`client/App.tsx` joins the two layers. It owns product mode, completed-turn processing, readiness and materiality requests, confirmation and handoff coordination, captured revision checks, the current authoritative Scroll, and what verified context is appended to the selected voice provider.
 
 This is intentional. Spoken language is probabilistic; council state must be deterministic and inspectable.
 
@@ -126,9 +148,9 @@ Raw transcripts and original intake text are not added to either store. A typed 
 
 This separation is intentional: Live microphone mute controls caller input, browser media controls what the user hears, and the materiality/revision layer controls whether delegated work remains valid. Tests can verify the controller and state transitions; actual speaker output still requires a real-account browser pass.
 
-## 3. GPT-Live connection and turn lifecycle
+## 3. Provider voice connections and turn lifecycle
 
-### WebRTC session establishment
+### OpenAI WebRTC session establishment
 
 ```mermaid
 sequenceDiagram
@@ -150,6 +172,28 @@ sequenceDiagram
     Browser->>Live: session.input_audio.mute
     Browser-->>User: Sutradhara is ready
 ```
+
+### Foundry relay establishment
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant Browser as Browser / LiveVoiceSession
+    participant Relay as Express /api/live/foundry
+    participant Voice as Azure Voice Live
+
+    User->>Browser: Select Start voice
+    Browser->>Browser: Request microphone permission
+    Browser->>Relay: Open authenticated WebSocket control relay
+    Relay->>Voice: Connect with server-side Foundry key
+    Voice-->>Relay: Session and WebRTC negotiation events
+    Relay-->>Browser: Provider-neutral transport events
+    Browser->>Voice: WebRTC audio
+    Browser-->>User: Sutradhara is ready
+```
+
+The permanent Foundry key stays on the server. The browser receives only the
+negotiation and bounded control messages needed for its media session.
 
 The browser creates the peer connection, but the API key never enters browser JavaScript. The local server exchanges the SDP offer with OpenAI and returns only the transport answer.
 
@@ -187,7 +231,7 @@ sequenceDiagram
     participant LiveSession as LiveVoiceSession
     participant Tracker as VoiceTurnTracker
     participant App
-    participant Live as GPT-Live-1
+    participant Live as Selected voice provider
 
     User->>LiveSession: Hold to speak
     LiveSession->>Tracker: beginUserTurn()
@@ -205,33 +249,44 @@ sequenceDiagram
     Tracker-->>App: one completed VoiceTurn
 ```
 
-## 4. Delegation: native signal plus safe fallback
+## 4. Approval and delegation binding
 
-GPT-Live client delegation and application readiness can race. The repository treats this as an exactly-once coordination problem.
+Both providers use the same explicit-confirmation product contract. Readiness
+captures one decision question, Sutradhara reads it back, and the council starts
+only after an exact approval. OpenAI delegation events may arrive on the decision
+turn or the confirming turn; Foundry has no native delegation event. The
+repository treats binding and start as an exactly-once coordination problem.
 
 ```mermaid
 flowchart TD
     T[Completed user turn] --> R{Decision ready?}
     R -->|No| C[Send authoritative CLARIFYING status]
     C --> Q[Sutradhara asks one brief question]
-    R -->|Yes| W[Reserve turn in InitialHandoffGate]
-    W --> N{Native delegation arrives in grace period?}
-    N -->|Yes| CN[Coordinator claims native start]
-    N -->|No| CF[Coordinator claims fallback start]
+    R -->|Yes| W[Store captured decision and optional delegation]
+    W --> A{User approves exact read-back?}
+    A -->|No or restated| T[Return to intake]
+    A -->|Yes| D{Confirmation turn has delegation?}
+    D -->|Yes| CN[Bind confirmation-turn delegation]
+    D -->|No| CF[Use stored decision-turn delegation or none]
     CN --> START[Start exactly one council round]
     CF --> START
-    CF -. late native event .-> BIND[Bind delegation id to existing round]
-    BIND --> START
+    START -. late duplicate event .-> IGNORE[Ignore idempotently]
 ```
 
 The pieces are:
 
 - `VoiceReadinessAssessor`: bounded server-side classification of `clarify` versus `convene`.
-- `InitialHandoffGate`: allows only one unresolved initial handoff across successive turns.
-- `VoiceDelegationCoordinator`: lets native delegation or fallback claim the start exactly once.
+- `PendingDecisionCaptureController`: retains the captured question and optional
+  first-turn delegation until approval, rejection, or restatement.
+- `VoiceDelegationCoordinator`: binds provider delegation metadata to the one
+  approved start without allowing a duplicate round.
 - `offset_ms` binding: associates a delegation with its causal transcript turn.
 
-If native `session.delegation.created` does not arrive after the short grace period, the application fallback starts the same council API. If native delegation arrives later, it binds to that existing round instead of starting a second one. The causal turn is marked explicitly and can never cancel the work it initiated.
+When the confirming OpenAI turn carries its own delegation, that delegation wins;
+otherwise the stored decision-turn delegation is used. A later duplicate event is
+idempotent. Foundry begins the approved application council with no fabricated
+delegation identifier. In every case, the causal decision and approval turns can
+never cancel the round they initiated.
 
 ## 5. Council deliberation pipeline
 
@@ -255,7 +310,7 @@ flowchart TB
         E2[Examiner critique]
     end
 
-    SYN[Synthesis Agents API session]
+    SYN[Synthesis runtime call]
     VALIDATE[Zod validation]
     SCROLL[Authoritative Decision Scroll]
 
@@ -279,13 +334,21 @@ flowchart TB
     REPAIR --> VALIDATE
 ```
 
-Each specialist is a managed Agents API session configured with its own prompt and JSON Schema output format. `Promise.all` provides independent-stage and critique-stage concurrency. Cross-examination receives bounded opinions, not private chain-of-thought. Synthesis receives the validated opinions and critiques and is itself schema constrained.
+Each specialist call is configured with its own prompt and JSON Schema output
+format. OpenAI uses managed Agents API sessions; Foundry uses application-owned
+personas over its Responses-compatible endpoint. `Promise.all` provides
+independent-stage and critique-stage concurrency. Cross-examination receives
+bounded opinions, not private chain-of-thought. Synthesis receives the validated
+opinions and critiques and is itself schema constrained.
 
-Existing specialist sessions can continue on reconvening, preserving useful session context. Separate synthesis and routing sessions prevent the moderator from becoming a hidden fourth decision-maker.
+Existing specialist provider context can continue on reconvening where the
+selected runtime supports it. Separate synthesis and routing calls prevent the
+moderator from becoming a hidden fourth decision-maker.
 
 ## 6. Bounded contracts
 
-All provider output is parsed and validated locally with Zod. The same Zod definitions generate the JSON Schemas supplied to Agents API sessions.
+All provider output is parsed and validated locally with Zod. The same Zod
+definitions generate the JSON Schemas supplied to either runtime.
 
 | Contract | Purpose | Important bounds |
 | --- | --- | --- |
@@ -362,7 +425,7 @@ sequenceDiagram
     participant App
     participant RoundN as Council round N
     participant RoundN1 as Council round N+1
-    participant Live as GPT-Live-1
+    participant Live as Selected voice provider
 
     App->>RoundN: Start at conversation 4 / deliberation 1
     User->>App: Material change: budget is halved
@@ -430,15 +493,17 @@ The **Decision Scroll** contains the full recommendation, rationale, three speci
 
 The **Council Map** is not another decision source. After synthesis, the server deterministically projects the validated specialist opinions and critiques into a `CouncilTrace`: one opening recommendation, one critique revision, and the final surviving perspective per specialist, plus at most six directed critique edges. Observations, uncertainties, provider payloads, and chain-of-thought are excluded. The UI presents the trace as a light map by default and as a denser audit trail on request.
 
-The **Voice Brief** is deterministically derived from that verified Scroll. It carries only the recommendation, main reason, key tension, immediate next step, and optional trigger. GPT-Live receives facts and delivery instructions, then paraphrases naturally; the application does not prewrite a polished monologue.
+The **Voice Brief** is deterministically derived from that verified Scroll. It carries only the recommendation, main reason, key tension, immediate next step, and optional trigger. The selected voice provider receives facts and delivery instructions, then Sutradhara paraphrases naturally; the application does not prewrite a polished monologue.
 
-Channel use is deliberate:
+The provider-neutral session methods preserve the OpenAI channel semantics below;
+the Foundry transport translates them into bounded system context and serialized
+directed responses:
 
 - `session.thinking.append`: quiet, bounded, verified council facts used for follow-up context.
 - `session.instructions.append`: authoritative process state such as `ACTIVE`, `COMPLETED`, or `FAILED`.
 - `session.commentary.append`: concise content intended for speech or paraphrase.
 
-An append acknowledgement proves that GPT-Live accepted the context event. It does **not** prove that the browser played audible speech; that requires a real browser and account smoke test.
+An append acknowledgement proves that the selected provider accepted the context event. It does **not** prove that the browser played audible speech; that requires a real browser and account smoke test.
 
 ## 11. Post-decision exploration
 
@@ -448,7 +513,7 @@ When a Scroll is complete, voice enters an explore-decision mode:
 2. a question such as “What did Forethought think?” is assessed as non-material;
 3. bounded verified context is appended quietly;
 4. commentary asks Sutradhara to answer the specific question from that context;
-5. no Agents API council session is started.
+5. no council runtime call is started.
 
 If the question introduces new information—“What if my budget drops by half?”—the materiality assessor routes it to reconvening instead.
 
@@ -462,21 +527,40 @@ client/
     VoiceControl.tsx              push-to-talk control
     AgentCard.tsx                 orchestration-state projection
     DecisionScroll.tsx            authoritative result presentation
+    ConstraintConfirmation.tsx    reflected old/new constraint and explicit approval
+    CouncilMap.tsx                bounded trace and revision navigation
+    DecisionWorkspace.tsx         local history, comparison, export and open controls
+    DiagnosticsDrawer.tsx         bounded developer-facing lifecycle state
+  pending-constraint.ts           refresh-safe pending confirmation
+  persisted-decision.ts           latest Scroll plus bounded local history
   voice/
-    live-session.ts               WebRTC, audio, Live events, append channels
+    live-session.ts               provider-neutral turn, playback and append control
+    provider-transport.ts          shared voice transport contract
+    transport-factory.ts           provider selection
+    openai-transport.ts            GPT-Live WebRTC and event translation
+    foundry-transport.ts           Foundry relay and event translation
+    webrtc.ts                      shared browser media helpers
     turn-tracker.ts               transcript aggregation and delegation binding
-    delegation-coordinator.ts     exactly-once native/fallback handoff
+    pending-decision-capture.ts    explicit approval and delegation precedence
+    pending-constraint-clarification.ts bounded follow-up clarification state
+    delegation-coordinator.ts     exactly-once OpenAI delegation binding
     council-lifecycle.ts          active and verified revision guards
     append-tracker.ts             Live append acknowledgement correlation
     decision-context.ts           bounded context reconstruction
     transcript-scroll.ts          follow-latest transcript behavior
+    playback-controller.ts        audible interruption and stale-audio suppression
+    serial-task-queue.ts          ordered completed-turn processing
+    session-bootstrap.ts          restored verified context for new Live sessions
 
 server/
   index.ts                        HTTP endpoints and streaming event transport
   config.ts                       environment-driven model configuration
   live/session.ts                 server-side GPT-Live session creation
+  live/foundry-session.ts         Foundry Voice Live relay
   agents/
     runtime.ts                    Agents API session adapter and repair turn
+    foundry-runtime.ts            Foundry Responses adapter
+    bounded-output.ts             bounded provider-output recovery
     mock-runtime.ts               deterministic local development runtime
   orchestration/council.ts        routing, concurrency, synthesis, cancellation
   voice/
@@ -489,6 +573,8 @@ shared/
   state-machine.ts                legal council phase transitions
   voice.ts                        deterministic Scroll-to-voice projection
   voice-policy.ts                 obvious non-material local policy
+  constraint-confirmation.ts      reflection and yes/no/restatement classification
+  confidence.ts                   unverified-evidence recommendation ceiling
 
 prompts/                          separately editable role instructions
 tests/                            unit and orchestration lifecycle coverage
@@ -499,12 +585,13 @@ tests/                            unit and orchestration lifecycle coverage
 | Endpoint or channel | Direction | Purpose |
 | --- | --- | --- |
 | `POST /api/live/session` | Browser → server | Exchange browser SDP for a server-created GPT-Live WebRTC session |
+| `WS /api/live/foundry` | Browser ↔ server | Relay Foundry Voice Live control while media remains WebRTC |
 | `POST /api/voice/readiness-assessment` | Browser → server | Decide whether a completed intake needs clarification or can convene |
 | `POST /api/voice/interruption-assessment` | Browser → server | Classify a later completed turn as material, non-material, or ambiguous |
 | `POST /api/deliberations` | Browser → server | Stream council phases, agent states, router result, and the final Scroll plus bounded Council Map trace as JSON lines |
 | `POST /api/deliberations/:id/interrupt` | Browser → server | Request server and provider-side cancellation for superseded work |
 | `POST /api/live/events` | Browser → server | Store bounded Live lifecycle diagnostics locally |
-| Live data channel | Browser ↔ GPT-Live | Transcript deltas, delegation events, audio state, and context append events |
+| Provider voice transport | Browser ↔ selected voice provider | Transcript updates, audio state, bounded context and commentary; OpenAI additionally exposes delegation metadata |
 
 ## 14. Observability and privacy
 
@@ -513,9 +600,9 @@ Two ignored local files support debugging:
 - `logs/deliberations.jsonl`: phases, agent states, bounded validated outputs, router results, errors, and final Scrolls.
 - `logs/live-events.jsonl`: session, turn, readiness, delegation, revision binding, append, interruption, cancellation, and stale-result events.
 
-Each successful Agents API call also writes an `agent.run` record with stage, optional specialist role, model, provider session ID, duration, repair status, and best-effort token usage. `council.telemetry` aggregates duration, call count, repair count, and usage for the round. New provider sessions carry bounded trace metadata containing the same council identifiers and revisions, never the decision text.
+Each successful runtime call writes an `agent.run` record with stage, optional specialist role, model or deployment, provider session/response ID, duration, repair status, and best-effort token usage. `council.telemetry` aggregates duration, call count, repair count, and usage for the round. Provider metadata is bounded and never includes the decision text.
 
-If an Agents API event stream fails after its session ID is known, the runtime retrieves the provider session status before surfacing the error. It does not blindly retry uncertain work. Cancellation input events use stable idempotency keys; revision checking remains the final safety boundary.
+If an OpenAI Agents stream fails after its session ID is known, that runtime retrieves provider status before surfacing the error. Foundry polls bounded background responses and maps terminal state through the same application contract. Neither runtime blindly retries uncertain work. Revision checking remains the final safety boundary.
 
 A healthy initial voice handoff normally contains:
 
@@ -525,16 +612,19 @@ live.user_turn.started
 live.user_turn.completed
 live.push_to_talk.stopped: reason=pointer_up|pointer_cancel|lost_pointer_capture
 live.readiness.assessed
-live.delegation.created OR live.delegation.fallback
-live.delegation.bound_to_revision
+live.user_turn.completed (exact approval turn)
+live.delegation.created and live.delegation.bound_to_revision (OpenAI only, when emitted)
 council.started
 council.phase: independent
 council.phase: cross_examining
 council.phase: synthesizing
 council.completed
 live.thinking.sent
+live.instructions.sent
 live.commentary.sent
 ```
+
+A material-correction path additionally records `live.interruption.materiality`, `live.constraint_confirmation.requested`, and exactly one accepted, rejected, or replaced outcome before any `council.cancel.requested` for that correction.
 
 The application does not log API keys, microphone audio, raw transcript deltas, or private chain-of-thought. Logs can contain bounded decision facts and complete Scroll fields, so review or delete them before sharing a project archive.
 
@@ -544,7 +634,7 @@ On reconvening, the client always combines the prior verified Scroll with the la
 
 ## 15. Configuration and model replacement
 
-Model choice is isolated in environment variables:
+Provider and model choice are isolated in environment variables:
 
 ```dotenv
 OPENAI_API_KEY=your-project-key
@@ -552,11 +642,22 @@ MOCK_COUNCIL=false
 OPENAI_LIVE_MODEL=gpt-live-1
 OPENAI_COUNCIL_MODEL=gpt-6-astra
 OPENAI_SYNTHESIS_MODEL=gpt-6-astra
+
+COUNCIL_PROVIDER=foundry
+VOICE_PROVIDER=foundry
+FOUNDRY_OPENAI_ENDPOINT=<azure-openai-v1-endpoint>
+FOUNDRY_API_KEY=your-resource-key
+FOUNDRY_COUNCIL_DEPLOYMENT=your-council-deployment
+FOUNDRY_SYNTHESIS_DEPLOYMENT=your-synthesis-deployment
+FOUNDRY_VOICE_ENDPOINT=<foundry-voice-https-endpoint>
+FOUNDRY_VOICE_MODEL=gpt-realtime
 ```
 
 - `OPENAI_LIVE_MODEL` changes only the conversational layer.
 - `OPENAI_COUNCIL_MODEL` changes specialists, routing, readiness, and materiality calls.
 - `OPENAI_SYNTHESIS_MODEL` changes the final synthesis call.
+- `COUNCIL_PROVIDER` and `VOICE_PROVIDER` select their adapters independently.
+- Foundry deployment names are read only when Foundry is selected; they cannot leak into the OpenAI runtime.
 - `MOCK_COUNCIL=true` replaces provider-backed council calls with the mock runtime for local development.
 
 Changing a model does not require changing orchestration code, but the replacement must support the API and structured-output behavior used here. Re-run typecheck, tests, production build, and a real-account smoke test after any provider or model change.
@@ -566,11 +667,13 @@ Changing a model does not require changing orchestration code, but the replaceme
 | Failure | Behavior |
 | --- | --- |
 | Microphone permission never resolves | Connection attempt times out with a useful browser-permission message |
-| Native delegation never arrives | Idempotent readiness fallback starts the council after a short grace period |
-| Native delegation arrives after fallback | Its id binds to the existing round; no duplicate council starts |
+| Native delegation never arrives | Exact user approval still starts the application-owned council; no provider event is required |
+| Confirmation turn carries a delegation | It takes precedence over a stored decision-turn delegation |
+| Delegation arrives late or twice | Binding is idempotent; no duplicate council starts |
 | Transcript fragment arrives late | It updates its existing turn and cannot invalidate the causal round |
 | User makes a non-material remark | Active work continues |
-| Material fact changes | Current round is cancelled where possible, marked stale, and reconvened |
+| Material spoken fact may have changed | The app reflects the bounded interpretation and preserves current authority until the user confirms, rejects, or restates it |
+| User confirms a material change | The prior active round is cancelled where possible, marked stale, routed, and reconvened |
 | Provider cancellation loses the race | Revision guard rejects the late result everywhere |
 | Agent returns invalid JSON | One repair continuation runs; another failure surfaces visibly |
 | Live append is acknowledged | Logged as accepted context, not falsely reported as audible playback |
@@ -580,8 +683,8 @@ Changing a model does not require changing orchestration code, but the replaceme
 
 - This is a proof of concept for one local user; there is no authentication or database.
 - The UI is the authority for whether council work started or completed. Spoken claims are never backend state.
-- Mock mode validates product mechanics, not OpenAI entitlement or network behavior.
+- Mock mode validates product mechanics, not provider entitlement or network behavior.
 - A successful build and automated test run do not validate microphone permission, actual Live delegation delivery, or audible playback.
-- The browser-to-GPT-Live portion must be smoke-tested with a permitted OpenAI project whenever Live protocol behavior or model configuration changes.
+- Each selected voice transport must be smoke-tested with its provider whenever protocol behavior or model configuration changes.
 
-For a capability-by-capability comparison, see the [OpenAI Feature Matrix](FEATURE_MATRIX.md). For operational instructions, see the [User Guide](USER_GUIDE.md). For reproducible validation, see the [Test Plan](TEST_PLAN.md).
+For a capability-by-capability comparison, see the [Feature Matrix](FEATURE_MATRIX.md) and [Provider differences](docs/PROVIDER_DIFFERENCES.md). For operational instructions, see the [User Guide](USER_GUIDE.md). For reproducible validation, see the [Test Plan](TEST_PLAN.md).

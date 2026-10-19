@@ -6,6 +6,7 @@ import {
   CritiqueSchema,
   CouncilTraceSchema,
   DecisionScrollSchema,
+  DecisionScrollOutputSchema,
   ImpactRouteSchema,
   SpecialistOpinionSchema,
   type AgentName,
@@ -19,7 +20,7 @@ import {
   type SpecialistOpinion,
 } from "../../shared/schemas.js";
 import { initialCouncilState, transition, type CouncilState } from "../../shared/state-machine.js";
-import { AgentSessionStreamError, type AgentRuntime, type AgentRun, type AgentRunTelemetry } from "../agents/runtime.js";
+import { AgentOutputError, AgentSessionStreamError, type AgentRuntime, type AgentRun, type AgentRunTelemetry } from "../agents/runtime.js";
 import { JsonlLogger } from "../logging/jsonl.js";
 import { loadPrompt } from "../prompts.js";
 
@@ -87,6 +88,7 @@ export class CouncilOrchestrator {
     const roundStartedAt = Date.now();
 
     try {
+      await this.log(id, record, "council.request", { context: request.context, changedConstraint: request.changedConstraint });
       let selected: AgentName[] = [...agents];
       let mode: "initial" | "selective" | "full" | "preserved" = existing || hydratedFromRequest ? "full" : "initial";
       if (hydratedFromRequest) {
@@ -219,6 +221,7 @@ export class CouncilOrchestrator {
     signal: AbortSignal,
   ): Promise<SpecialistOpinion> {
     const input = JSON.stringify({ phase: "opinion", decisionContext: context, changedConstraint, priorOpinion: record.opinions[agent] });
+    await this.log(id, record, "agent.input", { agent, stage: "opinion", input: JSON.parse(input) });
     let run: AgentRun<unknown>;
     const sessionId = record.sessions[agent];
     if (sessionId) run = await this.continueRun(id, record, "opinion", agent, this.models.council, { sessionId, input, schema: SpecialistOpinionSchema, signal });
@@ -267,7 +270,7 @@ export class CouncilOrchestrator {
     const run = await this.startRun(id, record, "synthesis", undefined, this.models.synthesis, {
       instructions: await loadPrompt("synthesis"),
       input,
-      schema: DecisionScrollSchema,
+      schema: DecisionScrollOutputSchema,
       signal,
     });
     // This council currently reasons from user-supplied context rather than an
@@ -308,6 +311,7 @@ export class CouncilOrchestrator {
           durationMs: Date.now() - startedAt,
           providerStatus: error instanceof AgentSessionStreamError ? error.providerStatus : undefined,
           message: error instanceof Error ? error.message.slice(0, 500) : "Agent run failed.",
+          invalidOutput: error instanceof AgentOutputError ? error.outputText : undefined,
         });
       }
       throw error;
@@ -348,6 +352,7 @@ export class CouncilOrchestrator {
           durationMs: Date.now() - startedAt,
           providerStatus: error instanceof AgentSessionStreamError ? error.providerStatus : undefined,
           message: error instanceof Error ? error.message.slice(0, 500) : "Agent continuation failed.",
+          invalidOutput: error instanceof AgentOutputError ? error.outputText : undefined,
         });
       }
       throw error;

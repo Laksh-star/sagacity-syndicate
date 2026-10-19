@@ -1,3 +1,4 @@
+import { isVoiceNonAnswer, VoiceIntakeEpoch } from "../shared/voice-intake";
 import { useEffect, useRef, useState } from "react";
 import type {
   AgentCardState, AgentName, CouncilEvent, CouncilPhase, CouncilTrace, DecisionScroll as DecisionScrollType,
@@ -5,7 +6,7 @@ import type {
 } from "../shared/schemas";
 import { classifyConfirmationReply, confirmationPrompt, createConstraintConfirmation } from "../shared/constraint-confirmation";
 import { createCouncilStartedCommentary, createCouncilThinkingContext, createVoiceBrief, createVoiceCommentary } from "../shared/voice";
-import { classifyLocalVoiceIntent, interruptionAction, obviousMaterialAssessment, obviousNonMaterialAssessment } from "../shared/voice-policy";
+import { classifyLocalVoiceIntent, interruptionAction, obviousMaterialAssessment, obviousNonMaterialAssessment, preserveCompletedMaterialTurn } from "../shared/voice-policy";
 import { assessVoiceInterruption, assessVoiceReadiness, interruptDeliberation, recordLiveDiagnostic, recoverDecisionHistory, streamDeliberation } from "./api";
 import { AgentCard } from "./components/AgentCard";
 import { CouncilMap } from "./components/CouncilMap";
@@ -23,6 +24,8 @@ import { LiveAppendTracker, type LiveAppendKind } from "./voice/append-tracker";
 import { InitialHandoffGate, VoiceDelegationCoordinator } from "./voice/delegation-coordinator";
 import { buildVoiceDecisionContext } from "./voice/decision-context";
 import { LiveVoiceSession, type LiveDelegation, type VoiceTurn } from "./voice/live-session";
+import { PendingConstraintClarificationController } from "./voice/pending-constraint-clarification";
+import { PendingDecisionCaptureController } from "./voice/pending-decision-capture";
 import type { LivePlaybackState } from "./voice/playback-controller";
 import { SerialTaskQueue } from "./voice/serial-task-queue";
 import { createLiveSessionBootstrap } from "./voice/session-bootstrap";
@@ -35,12 +38,11 @@ const activePhases: CouncilPhase[] = ["routing", "independent", "cross_examining
 type ProductMode = "conversation" | "deliberating" | "completed" | "reconvening" | "confirming_constraint";
 type InputMode = "voice" | "text";
 type VoiceIntakeStage = "ready" | "listening" | "captured" | "clarifying" | "preparing";
-
 const emptyCopy: Record<VoiceIntakeStage, { title: string; description: string }> = {
   ready: { title: "Ready when you are.", description: "Speak with Sutradhara, or switch to text to write the decision." },
   listening: { title: "Listening to your decision.", description: "Release the voice control when you finish this turn." },
   captured: { title: "Decision captured.", description: "Sutradhara is checking whether one essential detail is still needed." },
-  clarifying: { title: "One detail may still be needed.", description: "Answer Sutradhara's brief clarification, then the council will begin automatically." },
+  clarifying: { title: "One detail may still be needed.", description: "Answer the clarification, then confirm the captured decision before the council starts." },
   preparing: { title: "Preparing the council.", description: "The application is handing the completed decision to the council." },
 };
 
@@ -48,6 +50,7 @@ export default function App() {
   const [restored] = useState(() => loadPersistedDecision());
   const [restoredPending] = useState(() => loadPendingConstraint());
   const [decisionHistory, setDecisionHistory] = useState<DecisionHistoryEntry[]>(() => loadDecisionHistory());
+  const [capturedQuestion, setCapturedQuestion] = useState<string>();
   const [context, setContext] = useState("");
   const [constraint, setConstraint] = useState("");
   const [phase, setPhase] = useState<CouncilPhase>(restoredPending ? "confirming_constraint" : restored ? "completed" : "idle");
@@ -87,7 +90,14 @@ export default function App() {
   const revisionedTurns = useRef(new Set<string>());
   const activeDelegation = useRef<string | null>(null);
   const progressSent = useRef(false);
+  const intakeEpoch = useRef(new VoiceIntakeEpoch());
+  const pendingDecisionCapture = useRef(new PendingDecisionCaptureController());
+  const pendingConstraintClarification = useRef(new PendingConstraintClarificationController());
+  const initialDelegations = useRef(new Map<string, LiveDelegation>());
   const readinessTurns = useRef(new Set<string>());
+  const readinessAbort = useRef<AbortController | undefined>(undefined);
+  const backchannel = useRef<HTMLAudioElement | undefined>(undefined);
+  const stopBackchannel = () => { backchannel.current?.pause(); if (backchannel.current) backchannel.current.currentTime = 0; };
   const fallbackTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const initialHandoffGate = useRef(new InitialHandoffGate());
   const delegationCoordinator = useRef(new VoiceDelegationCoordinator());
@@ -112,6 +122,7 @@ export default function App() {
   useEffect(() => { pendingConfirmationRef.current = pendingConfirmation; }, [pendingConfirmation]);
   useEffect(() => () => {
     fallbackTimers.current.forEach(clearTimeout);
+    readinessAbort.current?.abort(); stopBackchannel();
     voice.current?.close();
   }, []);
 
@@ -121,6 +132,7 @@ export default function App() {
   }, [transcript, transcriptAtLatest]);
 
   const diagnostic = (entry: LiveDiagnosticEvent) => {
+    entry = { clientTimestamp: new Date().toISOString(), clientMonotonicMs: performance.now(), ...entry };
     const local = { ...entry, at: new Date().toISOString() };
     setDiagnostics((current) => [...current, local].slice(-40));
     recordLiveDiagnostic(entry);
@@ -128,6 +140,7 @@ export default function App() {
 
   const appendLive = (content: string, delegationId: string | null, kind: LiveAppendKind, revision?: CouncilRevision) => {
     if (!voice.current) return;
+    if (kind !== "thinking") stopBackchannel();
     try {
       const eventId = kind === "thinking"
         ? voice.current.appendThinking(content, delegationId)
@@ -137,7 +150,7 @@ export default function App() {
       appendTracker.current.register(eventId, { kind, revision, delegationId });
       diagnostic({ event: `live.${kind}.sent` as LiveDiagnosticEvent["event"], delegationId: delegationId ?? undefined, ...revision, detail: `event=${eventId}; characters=${content.length}` });
     } catch (caught) {
-      diagnostic({ event: "live.error", detail: caught instanceof Error ? caught.message : "Could not append to GPT-Live." });
+      diagnostic({ event: "live.error", detail: caught instanceof Error ? caught.message : "Could not update the active voice session." });
     }
   };
 
@@ -151,8 +164,8 @@ export default function App() {
     conversationRevision.current += 1;
   };
 
-  const runCouncil = async (options: { changedConstraint?: string; delegation?: LiveDelegation; reconvening?: boolean; conversationChanged?: boolean } = {}) => {
-    const currentDecisionContext = buildVoiceDecisionContext(
+  const runCouncil = async (options: { changedConstraint?: string; delegation?: LiveDelegation; reconvening?: boolean; conversationChanged?: boolean; confirmedContext?: string } = {}) => {
+    const currentDecisionContext = options.confirmedContext ?? buildVoiceDecisionContext(
       contextRef.current,
       transcriptRef.current,
       options.delegation?.causalTurn,
@@ -244,6 +257,7 @@ export default function App() {
       } else if (event.type === "council.error") {
         lifecycle.current.endIfCurrent(revision);
         setPhase("failed");
+        setVoiceIntakeStage("ready");
         setProductMode(scrollRef.current ? "completed" : "conversation");
         setError(event.message);
         setAuthoritativeLiveStatus("FAILED", "The council did not complete. Briefly say that the attempt failed; do not invent a result.", lifecycle.current.activeRound()?.delegationId ?? null, revision);
@@ -264,6 +278,7 @@ export default function App() {
       if (lifecycle.current.isCurrent(revision) && !(caught instanceof DOMException && caught.name === "AbortError")) {
         lifecycle.current.endIfCurrent(revision);
         setPhase("failed");
+        setVoiceIntakeStage("ready");
         setProductMode(scrollRef.current ? "completed" : "conversation");
         setError(caught instanceof Error ? caught.message : "Council request failed.");
         setAuthoritativeLiveStatus("FAILED", "The council did not complete. Briefly say that the attempt failed; do not invent a result.", lifecycle.current.activeRound()?.delegationId ?? null, revision);
@@ -299,6 +314,7 @@ export default function App() {
     delegation?: LiveDelegation,
     replacing = false,
   ) => {
+    pendingConstraintClarification.current.clear();
     const confirmation = createConstraintConfirmation(assessment, conversationRevision.current);
     pendingConfirmationRef.current = confirmation;
     pendingDelegation.current = delegation;
@@ -395,32 +411,62 @@ export default function App() {
       return;
     }
 
-    if (!active && !hasDecision && delegation) {
-      const replacedTurn = initialHandoffGate.current.replace(turn.id);
-      if (replacedTurn && replacedTurn !== turn.id) {
-        fallbackTimers.current.forEach(clearTimeout);
-        fallbackTimers.current.clear();
+    if (pendingConstraintClarification.current.current() && processedTurns.current.has(turn.id)) return;
+    const possibleConstraint = pendingConstraintClarification.current.resolve(turn.text);
+    if (possibleConstraint.kind !== "none") {
+      processedTurns.current.add(turn.id);
+      if (possibleConstraint.kind === "rejected") {
+        appendLive("The user rejected the possible constraint change. Briefly acknowledge that the verified decision remains current. Do not reconvene.", delegation?.id ?? null, "commentary");
+        return;
       }
-      const claim = delegationCoordinator.current.claimNative(turn.id, delegation.id);
-      const timer = fallbackTimers.current.get(turn.id);
-      if (timer) clearTimeout(timer);
-      fallbackTimers.current.delete(turn.id);
-      if (claim === "start") {
-        processedTurns.current.add(turn.id);
-        initialHandoffGate.current.clear(turn.id);
-        await runCouncil({ delegation, conversationChanged: false });
-      } else if (claim === "bind" && lifecycle.current.bindDelegation(delegation.id, turn.id)) {
-        const bound = lifecycle.current.activeRound();
-        diagnostic({
-          event: "live.delegation.bound_to_revision",
-          delegationId: delegation.id,
-          conversationRevision: bound?.conversationRevision,
-          deliberationRevision: bound?.deliberationRevision,
-          detail: `late causalTurn=${turn.id}`,
+      if (possibleConstraint.kind === "needs_value") {
+        appendLive(`The user confirmed they want to change this part of the decision: ${possibleConstraint.pending.sourceText} The exact replacement value is still missing. Ask for that value directly, such as the new duration. Do not ask another yes-or-no question and do not reconvene yet.`, delegation?.id ?? null, "commentary");
+        return;
+      }
+      let clarified: VoiceInterruptionAssessment;
+      try {
+        clarified = obviousMaterialAssessment(possibleConstraint.combinedText) ?? await assessVoiceInterruption({
+          utterance: possibleConstraint.combinedText,
+          currentContext: contextRef.current || (scrollRef.current ? restoredDecisionContext(scrollRef.current) : "Voice-provided decision context."),
+          phase: active ? "deliberating" : "completed",
+          currentScroll: scrollRef.current,
         });
+      } catch {
+        clarified = { material: false, reason: "The replacement value is still ambiguous.", confidence: 0 };
+      }
+      diagnostic({ event: "live.interruption.materiality", delegationId: delegation?.id, detail: `${clarified.material}:${clarified.confidence}:${clarified.reason}`.slice(0, 500) });
+      if (interruptionAction(clarified) === "reconvene" && clarified.changedConstraint) {
+        requestConstraintConfirmation(clarified, delegation, true);
+      } else {
+        appendLive(`The possible change remains incomplete: ${possibleConstraint.pending.sourceText} Ask for one exact replacement value, such as the new duration, budget, or deadline. Do not ask a yes-or-no question and do not reconvene yet.`, delegation?.id ?? null, "commentary");
       }
       return;
     }
+
+    const decisionCapture = pendingDecisionCapture.current.current();
+    if (!active && !hasDecision && decisionCapture) {
+      const resolution = pendingDecisionCapture.current.resolveTurn(turn, delegation);
+      if (resolution.kind === "none" || resolution.kind === "ignored") return;
+      if (resolution.kind === "start") {
+        initialDelegations.current.delete(resolution.capture.causalTurnId);
+        setCapturedQuestion(undefined);
+        processedTurns.current.add(turn.id);
+        await runCouncil({
+          confirmedContext: resolution.capture.context,
+          delegation: resolution.delegation,
+          conversationChanged: false,
+        });
+        return;
+      }
+      initialDelegations.current.delete(resolution.capture.causalTurnId);
+      setCapturedQuestion(undefined);
+      if (resolution.kind === "restate") {
+        processedTurns.current.add(turn.id);
+        appendLive("Ask the user to restate the exact decision they want the council to answer. Do not convene.", null, "commentary");
+        return;
+      }
+    }
+
 
     if (processedTurns.current.has(turn.id)) {
       if (delegation && lifecycle.current.bindDelegation(delegation.id, turn.id)) {
@@ -432,30 +478,45 @@ export default function App() {
     if (lifecycle.current.isCausalTurn(turn.id)) return;
 
     if (!active && !hasDecision) {
+      if (isVoiceNonAnswer(turn.text)) return;
+      if (transcriptRef.current.filter(t => t.role === "user" && t.complete).at(-1)?.id !== turn.id) return;
       if (readinessTurns.current.has(turn.id)) return;
+      const assessedEpoch = intakeEpoch.current.current();
       readinessTurns.current.add(turn.id);
+      // A completed substantive capture, not a pointer release, earns this ack.
+      try {
+        backchannel.current ??= new Audio("/audio/checking-question.wav");
+        stopBackchannel();
+        void backchannel.current.play().catch(() => undefined);
+      } catch { /* Optional local audio must never block decision intake. */ }
       setVoiceIntakeStage("captured");
       const completedUserTurns = transcriptRef.current
         .filter((candidate) => candidate.role === "user" && candidate.complete && candidate.text.trim())
         .slice(-8)
         .map((candidate) => candidate.text.trim());
+      readinessAbort.current?.abort();
+      const controller = new AbortController();
+      readinessAbort.current = controller;
       let readiness;
+      diagnostic({ event: "live.readiness.request_started", detail: `turn=${turn.id}; epoch=${assessedEpoch}` });
       try {
         readiness = await assessVoiceReadiness({
           latestTurn: turn.text.trim(),
-          currentContext: contextRef.current.trim() || "Voice-only intake; no separate written context was supplied.",
+          currentContext: buildVoiceDecisionContext(contextRef.current, transcriptRef.current, turn).slice(0, 8_000) || "Voice-only intake.",
           completedUserTurns: completedUserTurns.length ? completedUserTurns : [turn.text.trim()],
-        });
+        }, controller.signal);
       } catch {
-        readiness = turn.text.trim().length >= 80
-          ? { action: "convene" as const, missingInformation: [], reason: "The completed voice turn contains enough context for bounded analysis.", confidence: 0.5 }
-          : { action: "clarify" as const, missingInformation: ["the decision or choice to examine"], reason: "The decision is not yet clear enough to convene.", confidence: 0.5 };
+        if (controller.signal.aborted) return;
+        readiness = { action: "clarify" as const, missingInformation: ["the exact decision to examine"], reason: "Readiness could not be verified; no council started.", confidence: 0 };
       }
+      diagnostic({ event: "live.readiness.request_ended", detail: `turn=${turn.id}; epoch=${assessedEpoch}; action=${readiness.action}` });
+      stopBackchannel();
       // Native delegation may have won while the bounded readiness request was
       // in flight. Its ACTIVE status must not be overwritten by a late
       // clarification result, and it must never be followed by a fallback.
       if (
-        delegationCoordinator.current.sourceFor(turn.id)
+        !intakeEpoch.current.isCurrent(assessedEpoch)
+        || delegationCoordinator.current.sourceFor(turn.id)
         || initialHandoffGate.current.isReservedForOther(turn.id)
         || lifecycle.current.activeRound()
         || scrollRef.current
@@ -467,18 +528,18 @@ export default function App() {
         setAuthoritativeLiveStatus("CLARIFYING", `The council has not started. Ask one brief question about: ${readiness.missingInformation.join("; ")}.`);
         return;
       }
-      if (!initialHandoffGate.current.reserve(turn.id)) return;
-      setVoiceIntakeStage("preparing");
-      const timer = setTimeout(() => {
-        fallbackTimers.current.delete(turn.id);
-        if (!initialHandoffGate.current.isCurrent(turn.id) || lifecycle.current.activeRound() || scrollRef.current) return;
-        if (!delegationCoordinator.current.claimFallback(turn.id)) return;
-        initialHandoffGate.current.clear(turn.id);
-        processedTurns.current.add(turn.id);
-        diagnostic({ event: "live.delegation.fallback", detail: `causalTurn=${turn.id}; native delegation grace expired` });
-        void runCouncil({ conversationChanged: false });
-      }, 1_000);
-      fallbackTimers.current.set(turn.id, timer);
+      const decisionContext = buildVoiceDecisionContext(contextRef.current, transcriptRef.current, turn);
+      const capturedQuestion = readiness.decisionQuestion || transcriptRef.current.filter(t => t.role === "user" && t.complete && !isVoiceNonAnswer(t.text)).map(t => t.text.trim()).join(" ");
+      pendingDecisionCapture.current.set({
+        question: capturedQuestion,
+        context: `Confirmed decision question: ${capturedQuestion}\n\n${decisionContext}`,
+        causalTurnId: turn.id,
+        delegation: initialDelegations.current.get(turn.id),
+      });
+      setCapturedQuestion(capturedQuestion);
+      processedTurns.current.add(turn.id);
+      setVoiceIntakeStage("clarifying");
+      appendLive(`CAPTURED_DECISION_CONFIRMATION: ${capturedQuestion.slice(0, 650)}`, null, "commentary");
       return;
     }
 
@@ -495,6 +556,7 @@ export default function App() {
         phase: active ? "deliberating" : "completed",
         currentScroll: scrollRef.current,
       });
+      assessment = preserveCompletedMaterialTurn(turn.text, assessment);
     } catch {
       assessment = { material: false, reason: "The change is ambiguous, so current work is preserved pending clarification.", confidence: 0 };
     }
@@ -505,8 +567,9 @@ export default function App() {
       return;
     }
     if (action === "clarify") {
+      pendingConstraintClarification.current.begin(turn.text);
       const id = delegation?.id ?? activeDelegation.current;
-      appendLive("Ask one brief question to confirm whether the user's latest statement changes a decision constraint. Preserve the current council work until they confirm.", id, "commentary");
+      appendLive(`The user's latest statement may change a decision constraint: ${turn.text.slice(0, 400)} Ask one brief question for the exact replacement value, such as the new duration, budget, or deadline. Do not ask only whether they want a change. Preserve the verified result until the exact value is confirmed.`, id, "commentary");
       return;
     }
     if (active) {
@@ -587,16 +650,19 @@ export default function App() {
     session.addEventListener("talking", (event) => {
       const talking = (event as CustomEvent<boolean>).detail;
       setVoiceStatus(talking ? "talking" : "ready");
-      if (productModeRef.current === "conversation") setVoiceIntakeStage(talking ? "listening" : "captured");
+      if (talking) { intakeEpoch.current.advance(); readinessAbort.current?.abort(); stopBackchannel(); }
+      if (productModeRef.current === "conversation") setVoiceIntakeStage(talking ? "listening" : transcriptRef.current.at(-1)?.text.trim() ? "captured" : "ready");
     });
     session.addEventListener("turn", (event) => {
       const turn = (event as CustomEvent<VoiceTurn>).detail;
-      setTranscript((current) => {
-        const existing = current.findIndex((item) => item.id === turn.id);
-        const next = existing >= 0 ? current.map((item) => item.id === turn.id ? turn : item) : [...current, turn].slice(-20);
-        transcriptRef.current = next;
-        return next;
-      });
+      // Update the causal transcript synchronously before turn.completed processing.
+      // React may batch state updaters while readiness starts on the same event stack.
+      if (turn.role === "user" && turn.complete) intakeEpoch.current.advance();
+      const current = transcriptRef.current;
+      const existing = current.findIndex((item) => item.id === turn.id);
+      const next = existing >= 0 ? current.map((item) => item.id === turn.id ? turn : item) : [...current, turn];
+      transcriptRef.current = next;
+      setTranscript(next);
     });
     session.addEventListener("playback", (event) => {
       setPlaybackState((event as CustomEvent<{ state: LivePlaybackState }>).detail.state);
@@ -604,14 +670,20 @@ export default function App() {
     session.addEventListener("turn.completed", (event) => {
       const turn = (event as CustomEvent<VoiceTurn>).detail;
       if (turn.role === "user") {
-        void completedTurnQueue.current.enqueue(() => processCompletedUserTurn(turn)).catch((caught) => {
+        // Intake must not wait behind a superseded network assessment.
+        const intake = !lifecycle.current.activeRound() && !scrollRef.current && !pendingConfirmationRef.current;
+        const work = intake ? processCompletedUserTurn(turn) : completedTurnQueue.current.enqueue(() => processCompletedUserTurn(turn));
+        void work.catch((caught) => {
           diagnostic({ event: "live.error", detail: (caught instanceof Error ? caught.message : "Completed voice turn processing failed.").slice(0, 500) });
         });
       }
     });
     session.addEventListener("delegation", (event) => {
       const delegation = (event as CustomEvent<LiveDelegation>).detail;
-      if (delegation.causalTurn) void processCompletedUserTurn(delegation.causalTurn, delegation);
+      if (!delegation.causalTurn) return;
+      initialDelegations.current.set(delegation.causalTurn.id, delegation);
+      if (pendingDecisionCapture.current.attachDelegation(delegation.causalTurn.id, delegation)) return;
+      void processCompletedUserTurn(delegation.causalTurn, delegation);
     });
     session.addEventListener("diagnostic", (event) => diagnostic((event as CustomEvent<LiveDiagnosticEvent>).detail));
     session.addEventListener("append.acknowledged", (event) => {
@@ -640,6 +712,13 @@ export default function App() {
 
   const sendVoiceDecisionNow = () => {
     if (lifecycle.current.activeRound() || scrollRef.current) return;
+    const capture = pendingDecisionCapture.current.take();
+    if (capture) {
+      initialDelegations.current.delete(capture.causalTurnId);
+      setCapturedQuestion(undefined);
+      void runCouncil({ confirmedContext: capture.context, delegation: capture.delegation, conversationChanged: false });
+      return;
+    }
     const latest = [...transcriptRef.current].reverse().find((turn) => turn.role === "user" && turn.complete && turn.text.trim());
     if (!latest) { setError("Finish one spoken decision turn first."); return; }
     const timer = fallbackTimers.current.get(latest.id);
@@ -654,11 +733,13 @@ export default function App() {
   };
 
   const setPushToTalk = (active: boolean, stopReason?: PushToTalkStopReason) => {
+    if (active) stopBackchannel();
     voice.current?.setTalking(active);
     if (!active && stopReason) diagnostic({ event: "live.push_to_talk.stopped", detail: `reason=${stopReason}` });
   };
 
   const startNewDecision = () => {
+    readinessAbort.current?.abort(); stopBackchannel();
     fetchAbort.current?.abort();
     fallbackTimers.current.forEach(clearTimeout);
     fallbackTimers.current.clear();
@@ -676,6 +757,11 @@ export default function App() {
     processedTurns.current.clear();
     revisionedTurns.current.clear();
     readinessTurns.current.clear();
+    intakeEpoch.current.advance();
+    pendingDecisionCapture.current.clear();
+    pendingConstraintClarification.current.clear();
+    initialDelegations.current.clear();
+    setCapturedQuestion(undefined);
     initialHandoffGate.current = new InitialHandoffGate();
     delegationCoordinator.current = new VoiceDelegationCoordinator();
     appendTracker.current = new LiveAppendTracker();
@@ -721,6 +807,7 @@ export default function App() {
     productModeRef.current = "completed";
     pendingConfirmationRef.current = undefined;
     pendingDelegation.current = undefined;
+    pendingConstraintClarification.current.clear();
     clearPendingConstraint();
     persistDecision({
       deliberationId: entry.deliberationId,
@@ -811,7 +898,7 @@ export default function App() {
 
         {inputMode === "voice" ? <>
           <VoiceControl status={voiceStatus} productMode={productMode} playbackState={playbackState} onConnect={connectVoice} onTalk={setPushToTalk} />
-          <p className="mode-help">No written Decision Context is required. Speak naturally; a ready decision is sent to the council automatically.</p>
+          <p className="mode-help">No written Decision Context is required. Speak naturally; confirm the captured decision before it is sent to the council.</p>
           <div
             className="transcript"
             ref={transcriptElement}
@@ -821,7 +908,7 @@ export default function App() {
             }}
           >
             <div className="section-title"><span>Conversation</span><small>{transcript.length ? "latest turns" : "waiting for voice"}</small></div>
-            {transcript.length ? transcript.slice(-12).map((turn) => <p className={turn.complete ? "" : "transcript-partial"} key={turn.id}><strong>{turn.role === "user" ? "You" : "Sutradhara"}</strong><span>{turn.text || "Listening…"}</span></p>) : <p className="muted">Your conversation with Sutradhara will appear here.</p>}
+            {transcript.length ? transcript.filter(turn => turn.text.trim() || (!turn.complete && voiceStatus === "talking" && turn.id === transcript.at(-1)?.id)).slice(-12).map((turn) => <p className={turn.complete ? "" : "transcript-partial"} key={turn.id}><strong>{turn.role === "user" ? "You" : "Sutradhara"}</strong><span>{turn.text || "Listening…"}</span></p>) : <p className="muted">Your conversation with Sutradhara will appear here.</p>}
           </div>
           {!transcriptAtLatest && <button className="latest-button" onClick={() => {
             setTranscriptAtLatest(true);
@@ -897,13 +984,14 @@ export default function App() {
             }) : []);
           }}
         />}
+        {capturedQuestion && productMode === "conversation" && <section className="decision-workspace"><h3>Confirm the captured decision</h3><p>{capturedQuestion}</p><p>Say yes to start the council, or correct the question.</p></section>}
         {decisionHistory.length === 0 && productMode === "conversation" && <section className="decision-workspace history-recovery">
           <div><span className="eyebrow">Decision history</span><h3>No browser history loaded</h3></div>
-          <p>Completed council results may still be recoverable from this device's local deliberation log.</p>
+          <p>Completed council results may still be recoverable from this app's private server log.</p>
           <button className="artifact-button" disabled={historyRecoveryStatus === "recovering"} onClick={() => void recoverHistoryFromLogs()}>
-            {historyRecoveryStatus === "recovering" ? "Recovering…" : "Recover from local logs"}
+            {historyRecoveryStatus === "recovering" ? "Recovering…" : "Recover from server logs"}
           </button>
-          {historyRecoveryStatus === "empty" && <small>No verified results were found in the local log.</small>}
+          {historyRecoveryStatus === "empty" && <small>No verified results were found in the server log.</small>}
         </section>}
       </div>
     </section>
@@ -917,6 +1005,6 @@ export default function App() {
       deliberationId={deliberationId.current}
       agentStates={agentStates}
     />
-    <footer><span>Advice, not authority · Logs stay local</span><span>Revisions {conversationRevision.current}/{deliberationRevision.current}</span></footer>
+    <footer><span>Advice, not authority · Private browser and server history</span><span>Revisions {conversationRevision.current}/{deliberationRevision.current}</span></footer>
   </main>;
 }

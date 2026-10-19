@@ -2,8 +2,27 @@ import { describe, expect, it, vi } from "vitest";
 import { LiveAppendTracker } from "../client/voice/append-tracker.js";
 import { InitialHandoffGate, VoiceDelegationCoordinator } from "../client/voice/delegation-coordinator.js";
 import { LiveVoiceSession } from "../client/voice/live-session.js";
+import { OpenAIVoiceTransport } from "../client/voice/openai-transport.js";
 import { isNearTranscriptEnd, scrollTranscriptToLatest } from "../client/voice/transcript-scroll.js";
 import { VoiceReadinessAssessmentSchema } from "../shared/schemas.js";
+
+function openAISessionHarness() {
+  const sent: Array<{ type: string; event_id?: string; [key: string]: unknown }> = [];
+  const session = new LiveVoiceSession();
+  const transport = new OpenAIVoiceTransport((event) => {
+    (session as unknown as { handleTransportEvent: (value: typeof event) => void }).handleTransportEvent(event);
+  });
+  Object.assign(transport, {
+    ready: true,
+    channel: { readyState: "open", send: (value: string) => sent.push(JSON.parse(value)) },
+  });
+  Object.assign(session, {
+    transport,
+    ready: true,
+    stream: { getAudioTracks: () => [{ enabled: false }] },
+  });
+  return { session, transport, sent };
+}
 
 describe("voice council handoff", () => {
   it("starts exactly once when native delegation arrives", () => {
@@ -42,13 +61,11 @@ describe("voice council handoff", () => {
   });
 
   it("allows verified completion appends without a delegation ID", () => {
-    const sent: string[] = [];
-    const session = new LiveVoiceSession();
-    Object.assign(session, { ready: true, channel: { readyState: "open", send: (value: string) => sent.push(value) } });
+    const { session, sent } = openAISessionHarness();
     session.appendThinking("Verified council facts.", null);
     session.appendCommentary("Give a short briefing.", null);
     session.appendInstructions("Council status: COMPLETED.", null);
-    expect(sent.map((value) => JSON.parse(value))).toEqual([
+    expect(sent).toEqual([
       expect.objectContaining({ type: "session.thinking.append", delegation_id: null }),
       expect.objectContaining({ type: "session.commentary.append", delegation_id: null }),
       expect.objectContaining({ type: "session.instructions.append", delegation_id: null }),
@@ -74,13 +91,7 @@ describe("voice council handoff", () => {
   it("waits for late transcript fragments after microphone mute acknowledgement", () => {
     vi.useFakeTimers();
     try {
-      const sent: Array<{ type: string; event_id?: string }> = [];
-      const session = new LiveVoiceSession();
-      Object.assign(session, {
-        ready: true,
-        stream: { getAudioTracks: () => [{ enabled: false }] },
-        channel: { readyState: "open", send: (value: string) => sent.push(JSON.parse(value)) },
-      });
+      const { session, transport, sent } = openAISessionHarness();
       const completed: string[] = [];
       session.addEventListener("turn.completed", (event) => {
         const turn = (event as CustomEvent<{ role: string; text: string }>).detail;
@@ -88,18 +99,18 @@ describe("voice council handoff", () => {
       });
 
       session.setTalking(true);
-      (session as unknown as { handle: (event: object) => void }).handle({
+      transport.handleEvent({
         type: "session.input_transcript.delta", delta: "My budget is ₹40,000, not ", start_ms: 0, end_ms: 700,
       });
       session.setTalking(false);
       const mute = [...sent].reverse().find((event) => event.type === "session.input_audio.mute");
-      (session as unknown as { handle: (event: object) => void }).handle({
+      transport.handleEvent({
         type: "session.input_audio.muted", client_event_id: mute?.event_id,
       });
 
       vi.advanceTimersByTime(800);
       expect(completed).toEqual([]);
-      (session as unknown as { handle: (event: object) => void }).handle({
+      transport.handleEvent({
         type: "session.input_transcript.delta", delta: "₹1 lakh.", start_ms: 700, end_ms: 900,
       });
       vi.advanceTimersByTime(999);

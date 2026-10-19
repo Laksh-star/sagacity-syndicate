@@ -3,6 +3,8 @@
 Date: 15 September 2026  
 Scope: GPT-Live voice intake, automatic council handoff, non-material interjections, post-decision exploration, browser playback interruption, typed and spoken material corrections, reconvening, refresh continuity, decision history, and automated regression checks.
 
+> Historical evidence note: this report preserves the observed state on 15 September 2026. The pointer-boundary issue documented below was fixed and passed a supervised drift test on 16 September. Later work also added explicit confirmation for ambiguous high-impact speech and capped confidence when decision-critical uncertainty remains.
+
 This report collates the supervised browser run with bounded evidence from `logs/live-events.jsonl` and `logs/deliberations.jsonl`. It contains verified application events and authoritative Decision Scrolls. It does not contain audio, API keys, transcript deltas, hidden reasoning, or private chain-of-thought.
 
 All log timestamps below are UTC. The local test time was UTC+05:30.

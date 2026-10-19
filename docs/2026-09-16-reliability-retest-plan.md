@@ -1,7 +1,7 @@
 # Sagacity Syndicate: Focused Reliability Retest
 
 Date: 16 September 2026  
-Status: Prepared; supervised real-account execution pending.
+Status: Executed. Results are recorded in [2026-09-16-reliability-test-trail.md](2026-09-16-reliability-test-trail.md).
 
 ## Purpose
 

@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sagacity Syndicate — Behind-the-Scenes System Map</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --paper: #f4f0e5;
+      --paper-deep: #e8dfc8;
+      --ink: #173d34;
+      --ink-soft: #557168;
+      --forest: #174c3f;
+      --forest-soft: #dce8de;
+      --rust: #ae4c29;
+      --rust-soft: #f2ddd3;
+      --gold: #dca85d;
+      --line: #b8c6ba;
+      --white: #fffdf7;
+      --shadow: 0 18px 50px rgba(23, 61, 52, 0.12);
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background:
+        radial-gradient(circle at 90% 0%, rgba(220, 168, 93, 0.16), transparent 28rem),
+        linear-gradient(135deg, var(--paper), #eef2e7);
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      min-height: 100vh;
+    }
+
+    .shell { max-width: 1240px; margin: 0 auto; padding: 40px 24px 56px; }
+    .kicker { margin: 0 0 8px; letter-spacing: .16em; text-transform: uppercase; color: var(--ink-soft); font-size: 12px; font-weight: 700; }
+    h1 { margin: 0; font-family: Georgia, "Times New Roman", serif; font-size: clamp(40px, 7vw, 76px); line-height: .95; font-weight: 600; }
+    h1 span { color: var(--rust); }
+    .lede { max-width: 760px; margin: 18px 0 28px; color: var(--ink-soft); font-size: 17px; line-height: 1.6; }
+
+    .tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 22px; }
+    .tab {
+      appearance: none;
+      border: 1px solid var(--line);
+      background: rgba(255, 253, 247, .7);
+      color: var(--ink);
+      padding: 10px 16px;
+      border-radius: 999px;
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .tab[aria-selected="true"] { background: var(--forest); color: var(--white); border-color: var(--forest); }
+    .panel { display: none; }
+    .panel.active { display: block; }
+
+    .map {
+      position: relative;
+      background: rgba(255, 253, 247, .74);
+      border: 1px solid var(--line);
+      border-radius: 28px;
+      padding: 30px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+    .map::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background-image: linear-gradient(rgba(23, 61, 52, .035) 1px, transparent 1px), linear-gradient(90deg, rgba(23, 61, 52, .035) 1px, transparent 1px);
+      background-size: 24px 24px;
+      pointer-events: none;
+    }
+    .map > * { position: relative; }
+
+    .row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; align-items: stretch; }
+    .row.single { grid-template-columns: minmax(0, 520px); justify-content: center; }
+    .row.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .node {
+      background: var(--white);
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      padding: 18px;
+      min-height: 130px;
+    }
+    .node.dark { background: var(--forest); color: var(--white); border-color: var(--forest); }
+    .node.warm { background: var(--rust-soft); border-color: #d6a38d; }
+    .node.gold { background: #f2e4c7; border-color: #dcc18f; }
+    .node.soft { background: var(--forest-soft); }
+    .node h2, .node h3 { margin: 0 0 8px; font-family: Georgia, "Times New Roman", serif; font-weight: 600; }
+    .node h2 { font-size: 26px; }
+    .node h3 { font-size: 21px; }
+    .node p { margin: 0; line-height: 1.48; color: var(--ink-soft); }
+    .node.dark p { color: #d7e5df; }
+    .tag { display: inline-flex; align-items: center; gap: 6px; margin-bottom: 10px; color: var(--rust); font-size: 11px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+    .node.dark .tag { color: #f3c68b; }
+    .animal { font-size: 28px; margin-right: 6px; }
+    .arrow { display: grid; place-items: center; min-height: 48px; color: var(--rust); font-size: 27px; font-weight: 700; }
+    .arrow small { display: block; margin-left: 12px; color: var(--ink-soft); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
+    .split-arrow { display: grid; grid-template-columns: repeat(3, 1fr); text-align: center; color: var(--rust); font-size: 27px; padding: 2px 8%; }
+
+    .lanes { display: grid; gap: 12px; }
+    .lane { display: grid; grid-template-columns: 150px 1fr; gap: 16px; align-items: center; }
+    .lane-label { font-weight: 800; color: var(--ink); }
+    .track { display: grid; grid-template-columns: repeat(5, minmax(105px, 1fr)); gap: 8px; }
+    .step { padding: 12px; min-height: 72px; border-radius: 14px; background: var(--white); border: 1px solid var(--line); font-size: 13px; line-height: 1.35; }
+    .step.active { background: var(--forest); color: var(--white); border-color: var(--forest); }
+    .step.caution { background: var(--rust-soft); border-color: #d6a38d; }
+    .step.result { background: #f2e4c7; border-color: #dcc18f; }
+
+    .legend { display: flex; flex-wrap: wrap; gap: 18px; margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--line); color: var(--ink-soft); font-size: 13px; }
+    .legend span { display: inline-flex; align-items: center; gap: 7px; }
+    .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--forest); }
+    .dot.rust { background: var(--rust); }
+    .dot.gold { background: var(--gold); }
+
+    .callout { margin-top: 22px; padding: 16px 18px; border-left: 4px solid var(--rust); background: rgba(255, 253, 247, .72); color: var(--ink-soft); line-height: 1.5; }
+    .callout strong { color: var(--ink); }
+
+    @media (max-width: 820px) {
+      .row, .row.two { grid-template-columns: 1fr; }
+      .split-arrow { grid-template-columns: 1fr; }
+      .split-arrow span:not(:first-child) { display: none; }
+      .lane { grid-template-columns: 1fr; }
+      .track { grid-template-columns: 1fr; }
+      .shell { padding: 28px 14px 40px; }
+      .map { padding: 18px; border-radius: 20px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <p class="kicker">A Panchatantra-inspired AI decision council</p>
+    <h1>Sagacity <span>Syndicate</span></h1>
+    <p class="lede">A visual map of the provider-neutral control boundaries, verified decision flow, and safe reconvening machinery behind the conversational experience.</p>
+
+    <div class="tabs" role="tablist" aria-label="System map views">
+      <button class="tab" role="tab" aria-selected="true" aria-controls="system" id="tab-system">System</button>
+      <button class="tab" role="tab" aria-selected="false" aria-controls="decision" id="tab-decision">Decision lifecycle</button>
+      <button class="tab" role="tab" aria-selected="false" aria-controls="correction" id="tab-correction">Changed constraint</button>
+      <button class="tab" role="tab" aria-selected="false" aria-controls="safety" id="tab-safety">Safety model</button>
+    </div>
+
+    <section id="system" class="panel active" role="tabpanel" aria-labelledby="tab-system">
+      <div class="map">
+        <div class="row single">
+          <article class="node dark">
+            <span class="tag">Conversation layer</span>
+            <h2>Sutradhara · OpenAI or Foundry Live Voice</h2>
+            <p>Listens, clarifies, delegates, reports status, gives a short verified briefing, and answers follow-up questions. It cannot create or override the council result.</p>
+          </article>
+        </div>
+        <div class="arrow">↓ <small>captured decision + explicit approval</small></div>
+        <div class="row single">
+          <article class="node warm">
+            <span class="tag">Application authority</span>
+            <h2>React control plane</h2>
+            <p>Owns completed turns, revisions, delegation binding, materiality, confirmation, cancellation, stale-result suppression, persistence, and visible product state.</p>
+          </article>
+        </div>
+        <div class="arrow">↓ <small>validated deliberation request</small></div>
+        <div class="row">
+          <article class="node soft">
+            <span class="tag"><span class="animal">🐢</span>future lens</span>
+            <h3>Forethought</h3>
+            <p>Risks, scenarios, prevention, second-order effects.</p>
+          </article>
+          <article class="node gold">
+            <span class="tag"><span class="animal">🐇</span>action lens</span>
+            <h3>Quickaction</h3>
+            <p>Immediate moves, adaptability, reversible experiments.</p>
+          </article>
+          <article class="node">
+            <span class="tag"><span class="animal">🦉</span>challenge lens</span>
+            <h3>Examiner</h3>
+            <p>Assumptions, contradictions, missing options, tension.</p>
+          </article>
+        </div>
+        <div class="split-arrow"><span>↘</span><span>↓</span><span>↙</span></div>
+        <div class="row two">
+          <article class="node">
+            <span class="tag">Bounded challenge</span>
+            <h3>Cross-examination</h3>
+            <p>Each specialist critiques both peers once. Application code prevents self-edges and missing peer targets.</p>
+          </article>
+          <article class="node dark">
+            <span class="tag">Authoritative synthesis</span>
+            <h3>Decision Scroll</h3>
+            <p>Seven validated fields become the durable source of truth. A shorter Voice Brief is projected from it for speech.</p>
+          </article>
+        </div>
+        <div class="legend">
+          <span><i class="dot"></i> verified authority</span>
+          <span><i class="dot rust"></i> application control boundary</span>
+          <span><i class="dot gold"></i> bounded model contribution</span>
+        </div>
+      </div>
+    </section>
+
+    <section id="decision" class="panel" role="tabpanel" aria-labelledby="tab-decision">
+      <div class="map">
+        <div class="lanes">
+          <div class="lane">
+            <div class="lane-label">User + selected voice provider</div>
+            <div class="track">
+              <div class="step active">Speak a decision</div>
+              <div class="step">Clarify only what is necessary</div>
+              <div class="step">Read back and confirm</div>
+              <div class="step">One optional progress update</div>
+              <div class="step result">Short executive briefing</div>
+            </div>
+          </div>
+          <div class="lane">
+            <div class="lane-label">Control plane</div>
+            <div class="track">
+              <div class="step">Merge transcript deltas</div>
+              <div class="step active">Finalize user turn</div>
+              <div class="step">Bind OpenAI delegation if present</div>
+              <div class="step">Check captured revisions</div>
+              <div class="step result">Persist verified Scroll</div>
+            </div>
+          </div>
+          <div class="lane">
+            <div class="lane-label">Council</div>
+            <div class="track">
+              <div class="step">Waiting</div>
+              <div class="step">Ready</div>
+              <div class="step active">Three independent opinions</div>
+              <div class="step caution">Cross-exam → synthesis</div>
+              <div class="step result">Decision Scroll + trace</div>
+            </div>
+          </div>
+        </div>
+        <div class="callout"><strong>The key boundary:</strong> a transcript update is not a completed turn, a completed turn is not approval, and provider metadata is not a verified result.</div>
+      </div>
+    </section>
+
+    <section id="correction" class="panel" role="tabpanel" aria-labelledby="tab-correction">
+      <div class="map">
+        <div class="row single">
+          <article class="node warm">
+            <span class="tag">New completed turn</span>
+            <h2>“My budget is now ₹40,000, replacing ₹1 lakh.”</h2>
+            <p>The utterance is assessed after completion. Raw deltas never cancel a round.</p>
+          </article>
+        </div>
+        <div class="arrow">↓ <small>materiality assessment</small></div>
+        <div class="row">
+          <article class="node">
+            <span class="tag">Non-material</span>
+            <h3>Keep working</h3>
+            <p>“Okay,” status questions, and conversational acknowledgements do not invalidate deliberation.</p>
+          </article>
+          <article class="node gold">
+            <span class="tag">Ambiguous</span>
+            <h3>Clarify once</h3>
+            <p>Preserve current work and ask a brief question instead of destroying it.</p>
+          </article>
+          <article class="node warm">
+            <span class="tag">Material</span>
+            <h3>Reflect, do not rerun</h3>
+            <p>Show old and new values when available and wait for explicit confirmation.</p>
+          </article>
+        </div>
+        <div class="arrow">↓ <small>yes, no, or restatement</small></div>
+        <div class="row two">
+          <article class="node soft">
+            <span class="tag">Rejected or restated</span>
+            <h3>Preserve authority</h3>
+            <p>The current Decision Scroll and any valid running work remain intact.</p>
+          </article>
+          <article class="node dark">
+            <span class="tag">Confirmed</span>
+            <h3>Reconvene safely</h3>
+            <p>Advance revisions, cancel where possible, route impact, and accept only the newest verified synthesis.</p>
+          </article>
+        </div>
+        <div class="callout"><strong>Refresh-safe:</strong> pending confirmation is stored locally without provider identifiers and is restored before any reconvening can occur.</div>
+      </div>
+    </section>
+
+    <section id="safety" class="panel" role="tabpanel" aria-labelledby="tab-safety">
+      <div class="map">
+        <div class="row">
+          <article class="node dark">
+            <span class="tag">Revision gate</span>
+            <h3>Current or discarded</h3>
+            <p>Both conversation and deliberation revisions must match before output may render, persist, or speak.</p>
+          </article>
+          <article class="node warm">
+            <span class="tag">Schema gate</span>
+            <h3>Bounded contracts</h3>
+            <p>Opinions, critiques, routes, Scrolls, traces, briefs, and confirmations all pass Zod validation.</p>
+          </article>
+          <article class="node gold">
+            <span class="tag">Confidence gate</span>
+            <h3>Agreement is not evidence</h3>
+            <p>Recommendation confidence is capped at 85% until key external facts are verified.</p>
+          </article>
+        </div>
+        <div class="arrow">↓</div>
+        <div class="row two">
+          <article class="node">
+            <span class="tag">Privacy</span>
+            <h3>What is not retained</h3>
+            <p>No audio, raw transcript deltas, API keys, or private chain-of-thought in the durable product artifacts.</p>
+          </article>
+          <article class="node soft">
+            <span class="tag">Observability</span>
+            <h3>What is recorded</h3>
+            <p>Bounded lifecycle events, revisions, phases, acknowledgements, cancellation requests, and stale-result suppression.</p>
+          </article>
+        </div>
+        <div class="callout"><strong>Next frontier:</strong> add a shared, read-only evidence bundle with sources and verification status before allowing confidence above the current ceiling.</div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const tabs = [...document.querySelectorAll('[role="tab"]')];
+    const panels = [...document.querySelectorAll('[role="tabpanel"]')];
+    tabs.forEach((tab) => tab.addEventListener('click', () => {
+      tabs.forEach((item) => item.setAttribute('aria-selected', String(item === tab)));
+      panels.forEach((panel) => panel.classList.toggle('active', panel.id === tab.getAttribute('aria-controls')));
+    }));
+  </script>
+</body>
+</html>

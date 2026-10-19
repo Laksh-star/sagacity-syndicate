@@ -1,10 +1,11 @@
 import { appendFile, mkdir } from "node:fs/promises";
-import { dirname } from "node:path";
+import { pathToFileURL } from "node:url";
+import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { LiveDiagnosticEvent } from "../../shared/schemas.js";
 
 export class LiveJsonlLogger {
-  constructor(private readonly path = new URL("../../logs/live-events.jsonl", import.meta.url)) {}
+  constructor(private readonly path = process.env.LOG_DIRECTORY ? pathToFileURL(resolve(process.env.LOG_DIRECTORY, "live-events.jsonl")) : new URL("../../logs/live-events.jsonl", import.meta.url)) {}
 
   async write(entry: LiveDiagnosticEvent): Promise<void> {
     await mkdir(dirname(fileURLToPath(this.path)), { recursive: true });

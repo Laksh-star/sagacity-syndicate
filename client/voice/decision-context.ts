@@ -1,3 +1,4 @@
+import { isVoiceNonAnswer } from "../../shared/voice-intake.js";
 import type { VoiceTurn } from "./turn-tracker.js";
 
 export function buildVoiceDecisionContext(
@@ -5,10 +6,11 @@ export function buildVoiceDecisionContext(
   turns: VoiceTurn[],
   causalTurn?: VoiceTurn,
 ): string {
-  const completed = turns.filter((turn) => turn.complete && turn.text.trim()).slice(-12);
+  const completed = turns.filter((turn) => turn.complete && turn.text.trim());
   const includesCausal = causalTurn && completed.some((turn) => turn.id === causalTurn.id);
   const effectiveTurns = causalTurn?.text.trim() && !includesCausal ? [...completed, causalTurn] : completed;
   const voiceContext = effectiveTurns
+    .filter((turn) => !isVoiceNonAnswer(turn.text))
     .map((turn) => `${turn.role === "user" ? "User" : "Sutradhara"}: ${turn.text.trim()}`)
     .join("\n");
   return [typedContext.trim(), voiceContext && `Voice conversation:\n${voiceContext}`]

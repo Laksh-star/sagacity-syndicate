@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { classifyLocalVoiceIntent, interruptionAction, obviousMaterialAssessment, obviousNonMaterialAssessment } from "../shared/voice-policy.js";
+import { classifyLocalVoiceIntent, interruptionAction, obviousMaterialAssessment, obviousNonMaterialAssessment, preserveCompletedMaterialTurn } from "../shared/voice-policy.js";
 
 describe("voice interruption policy", () => {
   it("does not invalidate a council for a conversational acknowledgement", () => {
@@ -40,5 +40,15 @@ describe("voice interruption policy", () => {
 
   it("preserves work and asks for clarification when materiality is ambiguous", () => {
     expect(interruptionAction({ material: false, reason: "The statement may imply a change.", confidence: 0.4 })).toBe("clarify");
+  });
+
+  it("preserves every material clause from one completed user turn", () => {
+    const utterance = "Actually, I can spend only five hours a week and I want the test to be finished in four weeks.";
+    expect(preserveCompletedMaterialTurn(utterance, {
+      material: true,
+      changedConstraint: "Available effort is limited to five hours a week.",
+      reason: "The weekly capacity changed.",
+      confidence: 0.9,
+    }).changedConstraint).toBe(utterance);
   });
 });

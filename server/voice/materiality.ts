@@ -3,7 +3,7 @@ import {
   type VoiceInterruptionAssessment,
   type VoiceInterruptionRequest,
 } from "../../shared/schemas.js";
-import { obviousMaterialAssessment, obviousNonMaterialAssessment } from "../../shared/voice-policy.js";
+import { obviousMaterialAssessment, obviousNonMaterialAssessment, preserveCompletedMaterialTurn } from "../../shared/voice-policy.js";
 import type { AgentRuntime } from "../agents/runtime.js";
 import { loadPrompt } from "../prompts.js";
 import { z } from "zod";
@@ -34,12 +34,13 @@ export class VoiceMaterialityAssessor {
         metadata: { application: "sagacity-syndicate", stage: "voice_materiality" },
       });
       const wire = VoiceInterruptionWireSchema.parse(run.output);
-      return VoiceInterruptionAssessmentSchema.parse({
+      const assessment = VoiceInterruptionAssessmentSchema.parse({
         material: wire.material,
         ...(wire.changedConstraint ? { changedConstraint: wire.changedConstraint } : {}),
         reason: wire.reason,
         confidence: wire.confidence,
       });
+      return preserveCompletedMaterialTurn(request.utterance, assessment);
     } catch {
       return {
         material: false,

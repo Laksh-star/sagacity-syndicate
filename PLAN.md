@@ -1,6 +1,8 @@
 # Sagacity Syndicate — implementation plan
 
-Status: implemented and locally verified on 2026-09-11
+Status: original OpenAI plan implemented; provider-neutral consolidation candidate prepared on 2026-10-19
+
+> Historical implementation plan, approved before the original OpenAI build. The product now exceeds this baseline with explicit confirmation, separate OpenAI and Foundry voice transports, two council-runtime adapters, decision history/export, Council Map, provider recovery, and confidence calibration. Use [ARCHITECTURE.md](ARCHITECTURE.md), [FEATURE_MATRIX.md](FEATURE_MATRIX.md), [docs/PROVIDER_DIFFERENCES.md](docs/PROVIDER_DIFFERENCES.md), and [docs/BEHIND_THE_SCENES.md](docs/BEHIND_THE_SCENES.md) for current behavior.
 
 ## Product boundary
 
@@ -152,3 +154,10 @@ sagacity-syndicate/
 - Browser console: no errors or warnings during the exercised flow.
 - Automated checks: TypeScript passed; 9 tests passed, including real overlap of three backend calls and interrupted-revision invalidation; production Vite build passed.
 - GPT-Live code path: implemented against the current WebRTC/client-delegation contract but not live-smoke-tested because `OPENAI_API_KEY` was not present. No live-access claim is made.
+
+### Later implementation record
+
+- Real-account GPT-Live intake, delegation, concise briefing, follow-up exploration, refresh recovery, interruption, reconvening, pointer capture, and Council Map behavior were subsequently supervised through 16 September 2026.
+- The original material-change behavior was hardened so spoken corrections must be confirmed before they cancel or reconvene work.
+- The current automated release gate is 21 test files / 93 tests, typecheck, production build, public-artifact hygiene, and mock production-server smoke coverage.
+- The newest confirmation-gated correction path remains automated-test verified and still needs its focused real-microphone acceptance scenario.

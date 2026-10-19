@@ -3,6 +3,8 @@
 Date: 13 September 2026  
 Scope: GPT-Live voice intake, client delegation, completed-decision exploration, browser refresh, material-change detection, council reconvening, and spoken briefing.
 
+> Historical evidence note: this is the 13 September test record, not the current capability summary. Later supervised runs closed the server-restart and pointer-capture gaps and added bounded history, export, comparison, the Council Map, explicit material-constraint confirmation, confidence calibration, and stronger privacy hygiene. See [Behind the Scenes](BEHIND_THE_SCENES.md) and the [current Test Plan](../TEST_PLAN.md).
+
 This document collates the observable test trail from `logs/live-events.jsonl`, `logs/deliberations.jsonl`, and the browser transcript shown during the supervised test. It contains verified council artifacts and bounded diagnostic facts. It does not contain audio, API keys, transcript deltas, hidden reasoning, or private chain-of-thought.
 
 Related comparison: [Voice vs Typed Session Results](2026-09-13-voice-vs-typed-session-results.md).

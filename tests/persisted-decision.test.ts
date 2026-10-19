@@ -60,6 +60,15 @@ describe("authoritative decision persistence", () => {
     expect(storage.getItem("sagacity-syndicate.authoritative-decision.v1")).toBeNull();
   });
 
+  it("keeps an older verified Scroll readable after provider prose rules tighten", () => {
+    const storage = new MemoryStorage();
+    expect(persistDecision({
+      deliberationId: "decision_legacy", conversationRevision: 1, deliberationRevision: 1, roundMode: "initial",
+      scroll: { ...scroll, decision: "Run a six-week comparison with explicit metrics and ." },
+    }, storage)).toBe(true);
+    expect(loadPersistedDecision(storage)?.scroll.decision).toBe("Run a six-week comparison with explicit metrics and .");
+  });
+
   it("reconstructs bounded prior context without the raw conversation", () => {
     const context = restoredDecisionContext(scroll);
     expect(context).toContain("Prior verified decision: Run the pilot.");

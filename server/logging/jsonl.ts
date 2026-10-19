@@ -1,5 +1,6 @@
 import { appendFile, mkdir } from "node:fs/promises";
-import { dirname } from "node:path";
+import { pathToFileURL } from "node:url";
+import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export type LogEntry = {
@@ -12,7 +13,7 @@ export type LogEntry = {
 };
 
 export class JsonlLogger {
-  constructor(private readonly path = new URL("../../logs/deliberations.jsonl", import.meta.url)) {}
+  constructor(private readonly path = process.env.LOG_DIRECTORY ? pathToFileURL(resolve(process.env.LOG_DIRECTORY, "deliberations.jsonl")) : new URL("../../logs/deliberations.jsonl", import.meta.url)) {}
 
   async write(entry: Omit<LogEntry, "at">): Promise<void> {
     await mkdir(dirname(fileURLToPath(this.path)), { recursive: true });
