@@ -1,6 +1,26 @@
+<div align="center">
+
 # Sagacity Syndicate
 
-Sagacity Syndicate is a local-first, Panchatantra-inspired AI Decision Council. A conversational moderator, **Sutradhara**, helps frame the decision and presents the verified result. Three bounded specialists deliberate behind the scenes:
+**A Panchatantra-inspired AI Decision Council with a conversational moderator and three inspectable specialist perspectives.**
+
+[![React 19](https://img.shields.io/badge/React-19-0f766e?logo=react&logoColor=white)](https://react.dev/)
+[![TypeScript 7](https://img.shields.io/badge/TypeScript-7-3178c6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Node.js 22](https://img.shields.io/badge/Node.js-22-3c873a?logo=nodedotjs&logoColor=white)](https://nodejs.org/)
+[![OpenAI GPT--Live + Agents](https://img.shields.io/badge/OpenAI-GPT--Live%20%2B%20Agents-412991?logo=openai&logoColor=white)](https://developers.openai.com/api/docs/guides/live)
+[![Azure Foundry](https://img.shields.io/badge/Azure-Foundry%20Voice%20%2B%20Responses-0078d4?logo=microsoftazure&logoColor=white)](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/voice-live-how-to)
+[![WebRTC](https://img.shields.io/badge/Voice-WebRTC-b45309)](ARCHITECTURE.md)
+[![Tests](https://img.shields.io/badge/tests-190%20passing-2f855a)](docs/VALIDATION_HISTORY.md)
+
+[Quick start](#quick-start) · [Architecture](ARCHITECTURE.md) · [Azure deployment](docs/AZURE_DEPLOYMENT.md) · [User guide](USER_GUIDE.md) · [Validation](docs/VALIDATION_HISTORY.md)
+
+</div>
+
+![Sagacity Syndicate conversation and council overview](docs/assets/readme-overview.png)
+
+Sagacity Syndicate is a local-first decision aid. A conversational moderator,
+**Sutradhara**, helps frame the decision and presents the verified result. Three
+bounded specialists deliberate behind the scenes:
 
 - **Forethought** — future risks, scenarios, prevention, and second-order effects
 - **Quickaction** — immediate moves, adaptability, and low-regret action
@@ -27,6 +47,20 @@ Provider selection changes transport and model execution, not product authority.
 - conversational follow-up from the verified result without unnecessary reruns;
 - local decision history, Markdown export, revision comparison, diagnostics, and Council Map;
 - provider-neutral voice control with separate OpenAI and Foundry transports.
+
+## Product tour
+
+### From a decision to an inspectable council result
+
+The text and voice paths converge on the same revision-safe council. The
+completed view keeps the recommendation prominent while the Council Map shows
+which specialist ideas were challenged and what survived synthesis.
+
+![Completed Decision Scroll with Council Map](docs/assets/readme-decision-scroll.png)
+
+The full Decision Scroll remains the authoritative artifact. Sutradhara receives
+only a bounded Voice Brief for the spoken handoff, so the experience remains a
+conversation rather than a report being read aloud.
 
 ## Quick start
 

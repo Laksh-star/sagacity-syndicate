@@ -1,3 +1,14 @@
 {
-  "reviewedImages": []
+  "reviewedImages": [
+    {
+      "path": "docs/assets/readme-overview.png",
+      "reviewedOn": "2026-10-20",
+      "note": "Mock-mode landing view checked for credentials, provider identifiers, private deployment details, and personal decision data."
+    },
+    {
+      "path": "docs/assets/readme-decision-scroll.png",
+      "reviewedOn": "2026-10-20",
+      "note": "Mock-mode completed view uses an explicitly fictional studio decision and contains no credentials, provider identifiers, or private deployment details."
+    }
+  ]
 }
