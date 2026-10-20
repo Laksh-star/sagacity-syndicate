@@ -11,6 +11,7 @@
 [![Azure Foundry](https://img.shields.io/badge/Azure-Foundry%20Voice%20%2B%20Responses-0078d4?logo=microsoftazure&logoColor=white)](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/voice-live-how-to)
 [![WebRTC](https://img.shields.io/badge/Voice-WebRTC-b45309)](ARCHITECTURE.md)
 [![Tests](https://img.shields.io/badge/tests-190%20passing-2f855a)](docs/VALIDATION_HISTORY.md)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-d97706.svg)](LICENSE)
 
 [Quick start](#quick-start) · [Architecture](ARCHITECTURE.md) · [Azure deployment](docs/AZURE_DEPLOYMENT.md) · [User guide](USER_GUIDE.md) · [Validation](docs/VALIDATION_HISTORY.md)
 
@@ -210,3 +211,10 @@ npm start                      # serve the production build
 - This is a single-owner proof of concept. The hosted pilot has authentication,
   but it is not a multi-user production authorization system.
 - High-stakes legal, medical, financial, employment, and safety decisions require independent verification.
+
+## License
+
+Sagacity Syndicate is licensed under the [Apache License 2.0](LICENSE). The
+license covers the source code and repository documentation unless a file says
+otherwise. Third-party dependencies, services, names, and marks remain subject
+to their respective terms.
