@@ -1,9 +1,3 @@
 {
-  "reviewedImages": [
-    {
-      "path": "docs/assets/bangalore-decision-scroll.jpg",
-      "reviewedOn": "2026-10-09",
-      "note": "Product screenshot checked for visible secrets, provider identifiers, resource names, and personal data."
-    }
-  ]
+  "reviewedImages": []
 }

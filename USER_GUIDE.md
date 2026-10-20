@@ -42,6 +42,21 @@ server after editing `.env`.
 
 Keep `.env` local. Never commit, paste into chat, or place an API key in a screenshot.
 
+### Use an Azure-hosted pilot
+
+If an administrator has deployed Sagacity to Azure, open the supplied HTTPS App
+Service URL in Chrome or Edge and complete the Microsoft sign-in. You do not
+need a local `.env`, Node.js, or a local terminal to use that hosted instance.
+Allow microphone access only for the expected HTTPS hostname.
+
+The hosted pilot is owner-only by design. If sign-in succeeds but the
+application returns **Owner sign-in required**, the signed-in Microsoft Entra
+Object ID does not match the configured owner. Ask the deployment administrator
+to verify `OWNER_PRINCIPAL_ID`; do not work around the authentication boundary.
+
+Administrators should follow the complete [Azure deployment guide](docs/AZURE_DEPLOYMENT.md),
+not copy production credentials into this user guide or a local browser.
+
 ## 3. Choose one input mode
 
 The two tabs at the top of the left panel select the input path.
@@ -257,11 +272,13 @@ provider or configuration error.
 
 ### Voice remains on Connecting
 
-- Confirm microphone permission for `localhost` or `127.0.0.1`.
+- Confirm microphone permission for `localhost`/`127.0.0.1` in local mode, or
+  for the exact HTTPS App Service hostname in hosted mode.
 - Try a current Chrome or Edge browser if an embedded browser does not expose microphone permission.
 - Confirm the selected `VOICE_PROVIDER` and its key, endpoint, and model settings in `.env`.
 - Restart `npm run dev` after changing environment variables.
-- Open `/api/health`; `liveEnabled` should be `true`.
+- Open `/api/health`; `liveEnabled` should be `true` and `voiceProvider` should
+  name the intended provider. A hosted instance requires Microsoft sign-in.
 
 The client reports a microphone-permission timeout instead of waiting indefinitely.
 
@@ -332,7 +349,10 @@ See the [Architecture Guide](ARCHITECTURE.md) for the complete event and revisio
 
 ## 15. Current proof-of-concept limits
 
-- One local user; no sign-in, database, or multi-device history.
+- One owner. Local mode has no sign-in; the Azure pilot uses Easy Auth plus an
+  owner-principal check, but there is no multi-user authorization model.
+- No database or multi-device decision history; browser history remains local
+  to the browser/profile that produced it.
 - Mock mode proves UI and orchestration mechanics, not provider account access.
 - Speech recognition may mishear names, currencies, and numbers.
 - Automated tests cannot prove microphone permission, provider media connectivity, OpenAI client-delegation delivery, or audible speech.

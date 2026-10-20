@@ -75,6 +75,27 @@ Foundry configuration fails fast when the selected provider is missing its endpo
 
 Keep `.env` local. It is ignored by Git. Never put credentials in screenshots, logs, tracked documentation, or browser code.
 
+## Deploy to Azure
+
+The verified hosted topology runs the React UI and Express control plane in one
+Linux Node.js 22 Azure App Service, protects it with Microsoft Entra Easy Auth
+plus an owner-principal check, relays Foundry Voice Live control server-side,
+and invokes Azure Responses-compatible council deployments without exposing the
+resource key to browser JavaScript.
+
+See [Deploy to Azure](docs/AZURE_DEPLOYMENT.md) for the complete step-by-step
+setup, including:
+
+- Foundry endpoint and deployment requirements;
+- App Service runtime, startup, build, WebSocket, and environment settings;
+- Easy Auth and `OWNER_PRINCIPAL_ID` configuration;
+- clean ZIP creation and deployment;
+- health, voice, origin, and authentication checks; and
+- repeat deployment and rollback guidance.
+
+The high-level system and trust-boundary diagrams are in
+[Architecture](ARCHITECTURE.md#1-system-at-a-glance).
+
 ## Use
 
 ### Voice
@@ -136,13 +157,15 @@ npm start                      # serve the production build
 ## Documentation
 
 - [Architecture](ARCHITECTURE.md) — shared authority model, provider transports, council orchestration, persistence, and diagrams.
+- [Azure deployment](docs/AZURE_DEPLOYMENT.md) — owner-authenticated App Service setup, Foundry settings, deployment, validation, and rollback.
 - [Provider differences](docs/PROVIDER_DIFFERENCES.md) — explicit OpenAI/Foundry protocol and capability mapping.
 - [Feature matrix](FEATURE_MATRIX.md) — implemented and deferred platform capabilities.
 - [User guide](USER_GUIDE.md) — voice, text, reconvening, history, and troubleshooting.
 - [Test plan](TEST_PLAN.md) — automated, mock, provider, microphone, and hosted-origin validation.
 - [Device run guide](docs/DEVICE_RUN_GUIDE.md) — abbreviated owner-device acceptance procedure.
+- [Validation history](docs/VALIDATION_HISTORY.md) — sanitized release evidence and clearly bounded claims.
 - [ADR: explicit voice confirmation](docs/adr/0001-explicit-voice-confirmation.md) — why both providers share the same confirmation gate.
-- [Behind the scenes](docs/BEHIND_THE_SCENES.md) and [interactive system map](docs/sagacity-system-map.html) — development history and visual walkthrough.
+- [Behind the scenes](docs/BEHIND_THE_SCENES.md) and [interactive system map](docs/sagacity-system-map.html) — concise engineering case study and visual walkthrough.
 
 ## Privacy and limits
 
@@ -150,5 +173,6 @@ npm start                      # serve the production build
 - Audio and raw transcript deltas are not persisted.
 - Local JSONL logs may contain bounded decision facts and final Scrolls; they are ignored by Git and should be redacted before sharing.
 - The council does not currently research live prices, laws, schedules, or product claims. Recommendation confidence is therefore not factual certainty.
-- This is a single-user proof of concept, not a production authorization system.
+- This is a single-owner proof of concept. The hosted pilot has authentication,
+  but it is not a multi-user production authorization system.
 - High-stakes legal, medical, financial, employment, and safety decisions require independent verification.

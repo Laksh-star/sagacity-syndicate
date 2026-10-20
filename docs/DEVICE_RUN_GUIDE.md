@@ -1,16 +1,17 @@
-# Public-candidate dual-provider device run
+# Dual-provider device release run
 
-Use this abbreviated gate after the sanitized migration candidate passes its
-automated checks. It validates the exact candidate that will eventually become
-the public repository. Allow approximately 5–8 minutes per provider.
+The original consolidation gate completed on 20 October 2026. Retain this guide
+as the abbreviated device gate for any future change to a provider, model,
+voice transport, confirmation flow, or hosted boundary. It validates the exact
+commit intended for release. Allow approximately 5–8 minutes per provider.
 
 Do not paste credentials, endpoint hostnames, provider identifiers, or raw logs
 into tracked documentation. Keep credentials only in the ignored `.env` file.
 
-## 1. Candidate preflight
+## 1. Release preflight
 
 ```bash
-cd "/Users/ln-mini/Documents/Medley projects/sagacity-syndicate-consolidation-candidate"
+cd /path/to/sagacity-syndicate
 git status -sb
 npm ci
 npm run typecheck
@@ -19,9 +20,9 @@ npm run check:public-candidate
 npm run build
 ```
 
-The branch should be
-`consolidation/foundry-one-repo-candidate-2026-10-19`. Create `.env` only when
-it is absent:
+Use the exact release branch or commit under review; for routine regression on
+the authoritative repository, use current `main`. Create `.env` only when it is
+absent:
 
 ```bash
 cp .env.example .env
@@ -114,8 +115,10 @@ Deploy this exact candidate behind the intended HTTPS origin with
 4. credentials exist only in server settings;
 5. the hosted health response names the intended voice provider.
 
-This gate is required before archiving the private port. Local microphone success
-does not prove hosted origin, authentication, or WebSocket policy.
+This gate is required after a relevant hosted-boundary change. Local microphone
+success does not prove hosted origin, authentication, or WebSocket policy. The
+private port is intentionally retained unchanged as historical rollback; it is
+not the active source of truth.
 
 ## 6. Record the result
 
@@ -128,7 +131,8 @@ Keep raw logs outside both repositories. Record only:
 - `council.started` count and final revisions;
 - whether the hosted-origin gate passed.
 
-Append the sanitized result to
-[`2026-10-19-public-migration-candidate.md`](2026-10-19-public-migration-candidate.md).
-Do not push or merge the candidate until both provider runs and the hosted-origin
-gate are recorded honestly.
+For a future release, update the public
+[`VALIDATION_HISTORY.md`](VALIDATION_HISTORY.md) with only bounded outcomes and
+keep the detailed evidence in the private archive. Do not push or merge a
+release candidate until every applicable provider run and hosted-origin gate is
+recorded honestly.

@@ -87,6 +87,70 @@ There are two application entry paths but only one council:
 | Voice | Provider voice conversation and completed `VoiceTurn` records | Explicit approval through the application handoff gate | Decision Scroll in the UI plus a short spoken briefing |
 | Text | Decision Context form | User selects **Convene the council** | The same Decision Scroll schema in the UI |
 
+### Deployment and trust boundaries
+
+The same code runs locally or as one owner-authenticated Azure App Service. The
+provider selectors choose one voice edge and one council runtime; they do not
+create a second application or a second decision authority.
+
+```mermaid
+flowchart TB
+    U[User]
+
+    subgraph C[Browser · untrusted presentation edge]
+        UI[React UI]
+        VOICE[LiveVoiceSession]
+        MEDIA[Microphone + speaker]
+        STORE[Bounded local Scroll history]
+        UI <--> VOICE
+        MEDIA <--> VOICE
+    end
+
+    subgraph A[Trusted application boundary · local Express or Azure App Service]
+        AUTH[Easy Auth + owner check when hosted]
+        API[Express API]
+        CONTROL[Revision-safe application control plane]
+        COUNCIL[CouncilOrchestrator]
+        LOGS[Bounded JSONL diagnostics]
+        AUTH --> API --> CONTROL --> COUNCIL
+        API --> LOGS
+        COUNCIL --> LOGS
+    end
+
+    subgraph O[OpenAI configuration]
+        OVOICE[GPT-Live-1 · WebRTC]
+        OAGENTS[Agents API sessions]
+    end
+
+    subgraph F[Azure Foundry configuration]
+        FVOICE[Voice Live · WebRTC + server control relay]
+        FRESP[Responses-compatible deployments]
+    end
+
+    U <--> UI
+    UI <--> STORE
+    UI <-->|HTTPS + bounded events| AUTH
+    VOICE <-. selected OpenAI WebRTC path .-> OVOICE
+    API -. server creates session; key stays server-side .-> OVOICE
+    VOICE <-. selected Foundry WebRTC path .-> FVOICE
+    API <-. selected Foundry control relay .-> FVOICE
+    COUNCIL -. selected OpenAI runtime .-> OAGENTS
+    COUNCIL -. selected Foundry runtime .-> FRESP
+    COUNCIL -->|schema-validated result| CONTROL
+    CONTROL -->|authoritative Scroll + bounded Voice Brief| UI
+    UI -->|quiet context or spoken briefing directive| VOICE
+```
+
+Trust rules:
+
+- the browser is never trusted with a permanent provider credential;
+- hosted authentication is enforced before Express, then checked again against
+  the configured owner principal;
+- only bare origins in `ALLOWED_ORIGINS` may negotiate voice;
+- provider output becomes authoritative only after schema and revision checks;
+- local browser history and server JSONL logs are useful artifacts, not a
+  multi-user database or a substitute for a retention policy.
+
 ## 2. Responsibility boundaries
 
 ### Live voice: conversational layer
@@ -662,6 +726,10 @@ FOUNDRY_VOICE_MODEL=gpt-realtime
 
 Changing a model does not require changing orchestration code, but the replacement must support the API and structured-output behavior used here. Re-run typecheck, tests, production build, and a real-account smoke test after any provider or model change.
 
+For the complete owner-authenticated App Service topology, required application
+settings, Easy Auth configuration, ZIP deployment, hosted-origin checks, and
+rollback procedure, see [Deploy to Azure](docs/AZURE_DEPLOYMENT.md).
+
 ## 16. Failure handling
 
 | Failure | Behavior |
@@ -681,10 +749,12 @@ Changing a model does not require changing orchestration code, but the replaceme
 
 ## 17. Design constraints and limits
 
-- This is a proof of concept for one local user; there is no authentication or database.
+- This is a proof of concept for one owner. Local mode has no sign-in; the
+  hosted Azure pilot uses Easy Auth plus an owner-principal check. Neither mode
+  has a multi-user authorization model or database-backed history.
 - The UI is the authority for whether council work started or completed. Spoken claims are never backend state.
 - Mock mode validates product mechanics, not provider entitlement or network behavior.
 - A successful build and automated test run do not validate microphone permission, actual Live delegation delivery, or audible playback.
 - Each selected voice transport must be smoke-tested with its provider whenever protocol behavior or model configuration changes.
 
-For a capability-by-capability comparison, see the [Feature Matrix](FEATURE_MATRIX.md) and [Provider differences](docs/PROVIDER_DIFFERENCES.md). For operational instructions, see the [User Guide](USER_GUIDE.md). For reproducible validation, see the [Test Plan](TEST_PLAN.md).
+For a capability-by-capability comparison, see the [Feature Matrix](FEATURE_MATRIX.md) and [Provider differences](docs/PROVIDER_DIFFERENCES.md). For operational instructions, see the [User Guide](USER_GUIDE.md) and [Azure deployment guide](docs/AZURE_DEPLOYMENT.md). For reproducible validation, see the [Test Plan](TEST_PLAN.md).

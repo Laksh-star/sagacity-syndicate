@@ -76,4 +76,14 @@ These differences do not change the Decision Scroll’s authority or the council
 
 ## Validation status
 
-The consolidated implementation has automated coverage for both provider adapters and passed local owner-device voice runs on both providers before migration. The public candidate still requires one abbreviated post-migration microphone run on each provider and a configured hosted-origin check before the old private port can be archived.
+The consolidated implementation has automated coverage for both provider
+adapters and passed local owner-device voice runs on both providers. The public
+migration and dependency-security changes are merged. The merged public `main`
+also passed an owner-authenticated Azure Foundry run covering voice capture,
+explicit approval, deliberation, synthesis, bounded Live context/commentary,
+and audio playback, together with hosted authentication/origin rejection
+checks. The private port is retained unchanged as a rollback reference rather
+than as an active implementation.
+
+See [Deploy to Azure](AZURE_DEPLOYMENT.md) for the reproducible hosted topology
+and acceptance gate.

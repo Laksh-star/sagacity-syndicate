@@ -29,9 +29,12 @@ in [Provider differences](docs/PROVIDER_DIFFERENCES.md).
 | Status recovery | Session/turn/item inspection | Bounded response polling | Never treat uncertain `in_progress` work as success |
 | Configuration safety | OpenAI models and API key | Foundry deployments, endpoints and resource key | Unsupported providers and incomplete selected-provider config fail fast |
 
-The transport and runtime split is complete. The remaining release gate is a
-short post-migration microphone run on both providers plus hosted-origin
-validation; it is not an architectural implementation gap.
+The transport and runtime split is complete. Both providers passed the local
+owner-device flow, and the merged public `main` subsequently passed the hosted
+Azure Foundry voice, authentication, and origin-policy gate. Future provider,
+model, or transport changes should repeat the abbreviated release gate in
+[`TEST_PLAN.md`](TEST_PLAN.md); this is now a regression gate, not unfinished
+consolidation work.
 
 ## Status legend
 
@@ -131,9 +134,10 @@ Completed in the current repository:
 10. Recommendation-confidence calibration and public-artifact hygiene checks.
 
 The confirmation, correction, and reconvening flow has automated and local
-owner-device evidence on both providers. The remaining release gate is narrower:
-repeat one abbreviated initial decision and material correction on the exact
-public migration candidate, then validate its configured hosted origin.
+owner-device evidence on both providers. The exact merged public release also
+passed an owner-authenticated hosted Azure Foundry run and the associated
+authentication/origin rejection checks. Repeat the abbreviated release gate
+only when a provider, model, voice transport, or hosted boundary changes.
 
 These changes improve the current product without changing who holds decision authority.
 

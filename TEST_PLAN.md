@@ -383,7 +383,14 @@ Capture the following without secrets or private decision content:
 
 ## 8. Public migration and hosted-origin gate
 
-After the automated candidate passes:
+**Current status:** completed for the consolidated release on 20 October 2026.
+The public migration and dependency-security changes are merged, both providers
+passed the local owner-device sequence, and the exact public `main` passed the
+owner-authenticated Azure Foundry hosted gate. Keep this section as the reusable
+release gate for future provider, model, transport, authentication, or origin
+changes.
+
+For a future release candidate, after the automated checks pass:
 
 1. Run one abbreviated initial decision plus one material reconvening with OpenAI.
 2. Repeat with Foundry.
@@ -391,13 +398,15 @@ After the automated candidate passes:
    negotiate voice and an unapproved origin receives 403.
 4. Confirm credentials appear only in server settings and never in the built
    client, tracked files, screenshots, or validation report.
-5. Keep the former private port as rollback until the hosted candidate passes.
+5. Keep the former private port unchanged as a historical rollback reference;
+   public `main` remains authoritative.
 
 The post-migration microphone run may reuse one short decision scenario; it does
 not need to repeat every historical acceptance case.
 
 The release passes only when automated checks pass, text-first behavior remains
-intact, both provider adapters pass the abbreviated real-browser sequence, the
-hosted-origin boundary passes, and no stale round can render or speak. Historical
-full-flow evidence remains useful, but it does not replace the short
-post-migration check against the exact public candidate.
+intact, both affected provider adapters pass the abbreviated real-browser
+sequence, the hosted-origin boundary passes, and no stale round can render or
+speak. Historical full-flow evidence remains useful, but it does not replace a
+short check against the exact candidate whenever one of those boundaries has
+changed.
