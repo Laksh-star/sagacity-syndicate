@@ -11,6 +11,7 @@
 [![Azure Foundry](https://img.shields.io/badge/Azure-Foundry%20Voice%20%2B%20Responses-0078d4?logo=microsoftazure&logoColor=white)](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/voice-live-how-to)
 [![WebRTC](https://img.shields.io/badge/Voice-WebRTC-b45309)](ARCHITECTURE.md)
 [![Tests](https://img.shields.io/badge/tests-190%20passing-2f855a)](docs/VALIDATION_HISTORY.md)
+[![CI](https://github.com/Laksh-star/sagacity-syndicate/actions/workflows/ci.yml/badge.svg)](https://github.com/Laksh-star/sagacity-syndicate/actions/workflows/ci.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-d97706.svg)](LICENSE)
 
 [Quick start](#quick-start) · [Architecture](ARCHITECTURE.md) · [Azure deployment](docs/AZURE_DEPLOYMENT.md) · [User guide](USER_GUIDE.md) · [Validation](docs/VALIDATION_HISTORY.md)
@@ -65,9 +66,11 @@ conversation rather than a report being read aloud.
 
 ## Quick start
 
-Requires Node.js 22.6 or later.
+Requires Node.js 22.6 or later in the Node 22 release line. If you use `nvm`,
+the repository's `.nvmrc` selects the validated version.
 
 ```bash
+nvm use                 # optional when nvm is installed
 npm ci
 cp .env.example .env
 npm run dev
@@ -186,8 +189,12 @@ npm run typecheck              # TypeScript project checks
 npm test                       # hygiene check plus automated suite
 npm run check:public-candidate # strict public-candidate artifact scan
 npm run build                  # production client build
+npm run verify                 # complete local release gate
 npm start                      # serve the production build
 ```
+
+Every pull request and push to `main` runs the same release gate in GitHub
+Actions on the Node version declared by `.nvmrc`.
 
 ## Documentation
 

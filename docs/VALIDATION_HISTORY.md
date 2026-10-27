@@ -1,6 +1,6 @@
 # Validation history
 
-Last updated: 20 October 2026
+Last updated: 27 October 2026
 
 This is the public, privacy-bounded validation record for Sagacity Syndicate.
 It summarizes release evidence without publishing raw transcripts, real
@@ -16,8 +16,11 @@ The consolidated public release passed:
 - production Vite build with 145 transformed modules;
 - strict public-artifact hygiene with no private-only files;
 - Markdown link and whitespace checks; and
-- dependency audit with zero known vulnerabilities after the separately
-  reviewed dependency-security update.
+- dependency audit with zero known vulnerabilities after refreshing Express,
+  Vite, Vitest, Zod, and the fixed transitive body-parser release;
+- a Node 22 runtime contract through `package.json` and `.nvmrc`; and
+- a least-privilege GitHub Actions workflow that runs the same `npm run verify`
+  release gate on every pull request and push to `main`.
 
 Automated coverage includes:
 
