@@ -16,7 +16,7 @@ concurrency:
 jobs:
   verify:
     name: Verify Node 22 release
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
 
     steps:
