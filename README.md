@@ -193,8 +193,8 @@ npm run verify                 # complete local release gate
 npm start                      # serve the production build
 ```
 
-Every push and pull request runs the same release gate in GitHub Actions on the
-Node version declared by `.nvmrc`.
+Every pull request and push to `main` runs the same release gate in GitHub
+Actions on the Node version declared by `.nvmrc`.
 
 ## Documentation
 

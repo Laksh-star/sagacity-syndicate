@@ -20,7 +20,7 @@ The consolidated public release passed:
   Vite, Vitest, Zod, and the fixed transitive body-parser release;
 - a Node 22 runtime contract through `package.json` and `.nvmrc`; and
 - a least-privilege GitHub Actions workflow that runs the same `npm run verify`
-  release gate on every push and pull request.
+  release gate on every pull request and push to `main`.
 
 Automated coverage includes:
 
